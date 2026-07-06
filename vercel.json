@@ -1,0 +1,9 @@
+{
+  "installCommand": "npm install",
+  "buildCommand": "npm run build --workspace @fast-rental/shared && npm run build --workspace @fast-rental/frontend",
+  "outputDirectory": "apps/frontend/dist",
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

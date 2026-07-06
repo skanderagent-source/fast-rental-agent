@@ -1,0 +1,54 @@
+import { Router } from 'express';
+import { assignLeadSchema, createLeadSchema, leadsQuerySchema, updateLeadProgressSchema } from '@fast-rental/shared';
+import { requireAuth } from '../../middleware/auth.js';
+import { requireRole } from '../../middleware/requireRole.js';
+import { validateRequest } from '../../middleware/validateRequest.js';
+import { asyncHandler } from '../../utils/asyncHandler.js';
+import { paramId } from '../../utils/params.js';
+import {
+  assignLead,
+  createPublicLead,
+  deleteLead,
+  getAgentCalls,
+  listLeads,
+  markLeadsRead,
+  updateLeadProgress,
+} from './leads.service.js';
+
+const router = Router();
+
+router.get('/', requireAuth, validateRequest(leadsQuerySchema, 'query'), asyncHandler(async (req, res) => {
+  const profile = res.locals.profile as { id: string; role: string };
+  const data = await listLeads(profile, req.query as never);
+  res.json({ data });
+}));
+
+router.get('/my-calls', requireAuth, asyncHandler(async (req, res) => {
+  const profile = res.locals.profile as { id: string };
+  const data = await getAgentCalls(profile.id);
+  res.json({ data });
+}));
+
+router.post('/:id/assign', requireAuth, requireRole('admin'), validateRequest(assignLeadSchema), asyncHandler(async (req, res) => {
+  const admin = res.locals.profile as { id: string; nom: string };
+  const data = await assignLead(paramId(req.params.id), req.body.agentId, admin.id, admin.nom);
+  res.json({ data });
+}));
+
+router.patch('/:id/progress', requireAuth, validateRequest(updateLeadProgressSchema), asyncHandler(async (req, res) => {
+  const profile = res.locals.profile as { id: string; role: string };
+  const data = await updateLeadProgress(paramId(req.params.id), req.body.traitementStatut, profile);
+  res.json({ data });
+}));
+
+router.post('/mark-read', requireAuth, requireRole('admin'), asyncHandler(async (_req, res) => {
+  const data = await markLeadsRead((res.locals.profile as { id: string }).id);
+  res.json({ data });
+}));
+
+router.delete('/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const data = await deleteLead(paramId(req.params.id));
+  res.json({ data });
+}));
+
+export default router;

@@ -1,0 +1,45 @@
+{
+  "name": "fast-rental-fullstack",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "apps/frontend",
+    "apps/backend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/backend & npm run dev --workspace apps/frontend",
+    "dev:frontend": "npm run dev --workspace apps/frontend",
+    "dev:backend": "npm run dev --workspace apps/backend",
+    "build": "npm run build --workspace @fast-rental/shared && npm run build --workspace @fast-rental/backend && npm run build --workspace @fast-rental/frontend",
+    "lint": "npm run lint --workspace @fast-rental/shared && npm run lint --workspace @fast-rental/backend && npm run lint --workspace @fast-rental/frontend",
+    "test": "npm run test --workspace @fast-rental/backend",
+    "supabase": "supabase",
+    "verify-env": "node scripts/verify-env.mjs",
+    "verify-plan": "node scripts/verify-plan-complete.mjs",
+    "apply-ops": "node scripts/apply-ops-phases.mjs",
+    "verify-supabase-auth": "node scripts/verify-supabase-auth.mjs",
+    "verify-migrations": "node scripts/verify-migrations.mjs",
+    "verify-r2": "node scripts/verify-r2.mjs",
+    "verify-email": "node scripts/verify-email.mjs",
+    "verify-cutover": "node scripts/verify-cutover.mjs",
+    "verify-dns": "node scripts/verify-dns.mjs",
+    "security-checklist": "node scripts/run-security-checklist.mjs",
+    "create-initial-admin": "node scripts/create-initial-admin.mjs",
+    "create-test-agent": "node scripts/create-test-agent.mjs",
+    "backup-db": "node scripts/backup-database.mjs",
+    "db:push": "node scripts/apply-migrations.mjs",
+    "cutover": "node scripts/apply-cutover.mjs",
+    "smoke": "bash scripts/smoke-local.sh",
+    "deploy:vercel": "bash scripts/deploy-vercel.sh",
+    "deploy:vps": "bash scripts/deploy-vps.sh"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1"
+  },
+  "devDependencies": {
+    "supabase": "^2.19.7"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "updatedAt": "2026-07-06T01:43:00.747Z",
+  "phases": {
+    "p4": {
+      "offline": true,
+      "live": null
+    },
+    "p8": {
+      "offline": true,
+      "live": null
+    },
+    "p11": {
+      "offline": true,
+      "live": null
+    },
+    "p20": {
+      "offline": true,
+      "live": null
+    },
+    "p21-p25": {
+      "offline": true,
+      "live": null,
+      "note": "Production deploy/DNS/cutover live steps need domains + VPS/Vercel access"
+    }
+  },
+  "credentialHints": {
+    "supabase": true,
+    "r2": true,
+    "dns": true
+  }
+}
