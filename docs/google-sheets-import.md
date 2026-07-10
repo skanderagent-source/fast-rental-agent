@@ -40,4 +40,12 @@ Si tu n'as pas de service account Google, utilise le script dans [`scripts/googl
 
 ## Après l'import initial
 
-Supabase devient la source de vérité. Un re-import écrase les champs sheet (adresse, prix, statut…) sauf en mode **Sync** qui respecte `manual_overrides`.
+Supabase devient la source de vérité. Un re-import ou sync ne met à jour que les lignes **nouvelles ou modifiées** (comparaison champ par champ). Les champs modifiés manuellement dans l'app sont ignorés en mode **Sync** via `manual_overrides`.
+
+Puis lancer le géocodage pour les logements sans coordonnées :
+
+```bash
+npm run geocode
+```
+
+(~1,1 s par adresse nouvelle, cache Supabase pour les doublons). Voir `docs/operations.md`.

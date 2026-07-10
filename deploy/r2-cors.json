@@ -2,7 +2,9 @@
   {
     "AllowedOrigins": [
       "http://localhost:5173",
-      "https://YOUR_FRONTEND_DOMAIN"
+      "http://localhost:5174",
+      "https://YOUR_FRONTEND_DOMAIN",
+      "https://YOUR_UNION_DOMAIN"
     ],
     "AllowedMethods": ["PUT", "GET", "HEAD"],
     "AllowedHeaders": ["*"],

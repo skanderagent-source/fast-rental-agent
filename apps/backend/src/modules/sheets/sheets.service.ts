@@ -1,11 +1,19 @@
 import { env } from '../../config/env.js';
+import { logger } from '../../config/logger.js';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { logActivity } from '../activity/activity.service.js';
-import { geocodeListing } from '../listings/listings.geocode.js';
+import { geocodeAllPendingListings } from '../listings/listings.geocode.js';
 import type { ParsedSheetRow } from './sheetMappings.js';
 import { collectAllSheetRows } from './sheets.reader.js';
+import { buildChangedSheetUpdates, hasAddressFieldChange } from './sheets.compare.js';
 
 const BATCH_SIZE = 100;
+
+type UpsertResult = {
+  action: 'inserted' | 'updated' | 'skipped';
+  id: string;
+  addressChanged?: boolean;
+};
 
 function rowToPayload(row: ParsedSheetRow): Record<string, unknown> {
   return {
@@ -24,7 +32,6 @@ function rowToPayload(row: ParsedSheetRow): Record<string, unknown> {
     locataire_tel: row.locataire_tel,
     source: row.source,
     sheet_row_id: row.sheet_row_id,
-    sheet_updated_at: new Date().toISOString(),
     geocoding_status: 'pending',
   };
 }
@@ -49,7 +56,7 @@ export async function previewSheetImport() {
   };
 }
 
-async function upsertRow(row: ParsedSheetRow, mode: 'import' | 'sync') {
+async function upsertRow(row: ParsedSheetRow, mode: 'import' | 'sync'): Promise<UpsertResult> {
   const payload = rowToPayload(row);
   const { data: existing } = await supabaseAdmin
     .from('logements')
@@ -58,25 +65,15 @@ async function upsertRow(row: ParsedSheetRow, mode: 'import' | 'sync') {
     .maybeSingle();
 
   if (existing) {
-    if (mode === 'import') {
-      const { data, error } = await supabaseAdmin
-        .from('logements')
-        .update(payload)
-        .eq('id', existing.id)
-        .select('id')
-        .single();
-      if (error) throw error;
-      return { action: 'updated' as const, id: data.id };
+    const overrides = mode === 'sync'
+      ? ((existing.manual_overrides ?? {}) as Record<string, boolean>)
+      : {};
+
+    const updates = buildChangedSheetUpdates(existing, payload, overrides);
+    if (!updates) {
+      return { action: 'skipped', id: existing.id };
     }
 
-    const overrides = (existing.manual_overrides ?? {}) as Record<string, boolean>;
-    const updates: Record<string, unknown> = {
-      sheet_row_id: row.sheet_row_id,
-      sheet_updated_at: payload.sheet_updated_at,
-    };
-    for (const [key, val] of Object.entries(payload)) {
-      if (!overrides[key]) updates[key] = val;
-    }
     const { data, error } = await supabaseAdmin
       .from('logements')
       .update(updates)
@@ -84,17 +81,24 @@ async function upsertRow(row: ParsedSheetRow, mode: 'import' | 'sync') {
       .select('id')
       .single();
     if (error) throw error;
-    return { action: 'updated' as const, id: data.id };
+    return {
+      action: 'updated',
+      id: data.id,
+      addressChanged: hasAddressFieldChange(updates),
+    };
   }
 
+  const insertPayload = {
+    ...payload,
+    sheet_updated_at: new Date().toISOString(),
+  };
   const { data, error } = await supabaseAdmin
     .from('logements')
-    .insert(payload)
+    .insert(insertPayload)
     .select('id')
     .single();
   if (error) throw error;
-  void geocodeListing(data.id);
-  return { action: 'inserted' as const, id: data.id };
+  return { action: 'inserted', id: data.id, addressChanged: true };
 }
 
 async function runSheetJob(
@@ -115,6 +119,7 @@ async function runSheetJob(
   let rowsUpdated = 0;
   let rowsSkipped = 0;
   let rowsErrored = 0;
+  let needsGeocode = false;
 
   await logActivity({
     agentId: '00000000-0000-0000-0000-000000000000',
@@ -132,8 +137,15 @@ async function runSheetJob(
       for (const row of batch) {
         try {
           const result = await upsertRow(row, mode);
-          if (result.action === 'inserted') rowsInserted++;
-          else rowsUpdated++;
+          if (result.action === 'inserted') {
+            rowsInserted++;
+            needsGeocode = true;
+          } else if (result.action === 'updated') {
+            rowsUpdated++;
+            if (result.addressChanged) needsGeocode = true;
+          } else {
+            rowsSkipped++;
+          }
         } catch {
           rowsErrored++;
         }
@@ -155,8 +167,14 @@ async function runSheetJob(
       agentId: '00000000-0000-0000-0000-000000000000',
       agentNom: 'System',
       typeAction: activityDone,
-      details: `${rowsInserted} insérés, ${rowsUpdated} mis à jour, ${rowsErrored} erreurs`,
+      details: `${rowsInserted} insérés, ${rowsUpdated} mis à jour, ${rowsSkipped} inchangés, ${rowsErrored} erreurs`,
     });
+
+    if (needsGeocode) {
+      void geocodeAllPendingListings().catch((err) => {
+        logger.error({ err }, 'Background geocoding after sheet job failed');
+      });
+    }
 
     return {
       mode,
@@ -164,6 +182,7 @@ async function runSheetJob(
       stats,
       rowsInserted,
       rowsUpdated,
+      rowsSkipped,
       rowsErrored,
       summary: summarizeRows(rows),
     };

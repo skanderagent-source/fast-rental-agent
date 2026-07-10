@@ -30,6 +30,7 @@
     "create-initial-admin": "node scripts/create-initial-admin.mjs",
     "create-test-agent": "node scripts/create-test-agent.mjs",
     "backup-db": "node scripts/backup-database.mjs",
+    "geocode": "npm run geocode --workspace @fast-rental/backend",
     "db:push": "node scripts/apply-migrations.mjs",
     "cutover": "node scripts/apply-cutover.mjs",
     "smoke": "bash scripts/smoke-local.sh",

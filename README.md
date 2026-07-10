@@ -18,6 +18,8 @@ nvm use
 npm install
 cp apps/backend/.env.example apps/backend/.env
 cp apps/frontend/.env.example apps/frontend/.env
+# How to use after sheet import
+npm run geocode
 # Fill Supabase keys in both .env files
 npm run verify-env
 npm run build
