@@ -1,5 +1,4 @@
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
-import { stripHtml } from '../../utils/sanitize.js';
 import { getPagination } from '../../utils/pagination.js';
 import { emailService } from '../email/email.service.js';
 import { logActivity } from '../activity/activity.service.js';
@@ -9,83 +8,6 @@ async function fetchListingAdresse(listingId: string | null | undefined) {
   if (!listingId) return null;
   const { data } = await supabaseAdmin.from('logements').select('adresse').eq('id', listingId).maybeSingle();
   return data?.adresse ?? null;
-}
-
-export async function createPublicLead(input: {
-  listingId?: string | null;
-  nom: string;
-  telephone?: string | null;
-  email?: string | null;
-  revenuMensuel?: number | null;
-  scoreCredit?: number | null;
-  dateDemenagement?: string | null;
-  message?: string | null;
-  typeDemande: 'rappel' | 'prequal';
-  refAgentId?: string | null;
-}) {
-  let refAgentId: string | null = null;
-  let suggestedAgentName: string | null = null;
-  if (input.refAgentId) {
-    const { data: agent } = await supabaseAdmin
-      .from('agents')
-      .select('id, nom')
-      .eq('id', input.refAgentId)
-      .eq('actif', true)
-      .maybeSingle();
-    if (agent) {
-      refAgentId = agent.id;
-      suggestedAgentName = agent.nom;
-    }
-  }
-
-  const { data, error } = await supabaseAdmin.from('demandes_clients').insert({
-    listing_id: input.listingId ?? null,
-    nom: stripHtml(input.nom),
-    telephone: input.telephone ? stripHtml(input.telephone) : null,
-    email: input.email ?? null,
-    revenu_mensuel: input.revenuMensuel ?? null,
-    score_credit: input.scoreCredit ?? null,
-    date_demenagement: input.dateDemenagement ? stripHtml(input.dateDemenagement) : null,
-    message: input.message ? stripHtml(input.message) : null,
-    type_demande: input.typeDemande,
-    statut: 'nouveau',
-    ref_agent_id: refAgentId,
-  }).select('*').single();
-  if (error) throw error;
-
-  const listingAdresse = await fetchListingAdresse(data.listing_id);
-  const leadPayload = {
-    nom: data.nom,
-    telephone: data.telephone,
-    email: data.email,
-    revenu_mensuel: data.revenu_mensuel,
-    score_credit: data.score_credit,
-    date_demenagement: data.date_demenagement,
-    message: data.message,
-    type_demande: data.type_demande,
-  };
-
-  const { data: admins, error: adminsError } = await supabaseAdmin
-    .from('agents')
-    .select('email')
-    .eq('role', 'admin')
-    .eq('actif', true);
-  if (adminsError) throw adminsError;
-  const adminList = Array.isArray(admins) ? admins : admins ? [admins] : [];
-  for (const admin of adminList) {
-    if (admin.email) {
-      emailService.notifyLeadReceivedAdmin(admin.email, {
-        lead: leadPayload,
-        listingAdresse,
-        suggestedAgentName,
-      });
-    }
-  }
-  if (data.email) {
-    emailService.notifyLeadConfirmationClient(data.email, { nom: data.nom, listingAdresse });
-  }
-
-  return data;
 }
 
 export async function listLeads(
@@ -108,12 +30,11 @@ export async function listLeads(
 
   let badgeCount = 0;
   if (profile.role === 'admin') {
-    const { count: unread } = await supabaseAdmin
+    const { count: unassigned } = await supabaseAdmin
       .from('demandes_clients')
       .select('*', { count: 'exact', head: true })
-      .eq('statut', 'nouveau')
-      .eq('lu', false);
-    badgeCount = unread ?? 0;
+      .eq('statut', 'nouveau');
+    badgeCount = unassigned ?? 0;
   } else {
     const { count: assigned } = await supabaseAdmin
       .from('demandes_clients')
@@ -215,15 +136,6 @@ export async function updateLeadProgress(
     .single();
   if (error) throw error;
   return data;
-}
-
-export async function markLeadsRead(adminId: string) {
-  await supabaseAdmin
-    .from('demandes_clients')
-    .update({ lu: true })
-    .eq('statut', 'nouveau')
-    .eq('lu', false);
-  return { updated: true };
 }
 
 export async function deleteLead(leadId: string) {

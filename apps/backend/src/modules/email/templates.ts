@@ -35,38 +35,6 @@ function leadFieldsText(lead: LeadLike) {
   return lines.join('\n');
 }
 
-export function leadReceivedAdmin(input: {
-  lead: LeadLike;
-  listingAdresse?: string | null;
-  suggestedAgentName?: string | null;
-}): EmailContent {
-  const typeLabel = input.lead.type_demande === 'prequal' ? 'Préqualification' : 'Rappel';
-  const subject = `Nouvelle demande — ${input.lead.nom}`;
-  const lines = [
-    `Type: ${typeLabel}`,
-    `Nom: ${input.lead.nom}`,
-    ...leadFieldsText(input.lead).split('\n').filter(Boolean),
-  ];
-  if (input.listingAdresse) lines.push(`Logement: ${input.listingAdresse}`);
-  if (input.suggestedAgentName) lines.push(`Agent suggéré : ${input.suggestedAgentName}`);
-  const link = frontendUrl('/app/demandes');
-  const text = [...lines, `Ouvrir les demandes: ${link}`].join('\n');
-  const html = `<p>${lines.map((l) => escapeHtml(l)).join('</p><p>')}</p><p><a href="${escapeHtml(link)}">Ouvrir les demandes</a></p>`;
-  return { subject, html, text };
-}
-
-export function leadConfirmationClient(input: { nom: string; listingAdresse?: string | null }): EmailContent {
-  const firstName = input.nom.split(' ')[0] || input.nom;
-  const subject = 'Nous avons bien reçu ta demande';
-  const text = [
-    `Bonjour ${firstName},`,
-    input.listingAdresse ? `Logement: ${input.listingAdresse}` : '',
-    'Un agent te contactera rapidement.',
-  ].filter(Boolean).join('\n');
-  const html = `<p>Bonjour ${escapeHtml(firstName)},</p>${input.listingAdresse ? `<p>Logement: ${escapeHtml(input.listingAdresse)}</p>` : ''}<p>Un agent te contactera rapidement.</p>`;
-  return { subject, html, text };
-}
-
 export function leadAssignedAgent(input: {
   agentNom: string;
   lead: LeadLike;

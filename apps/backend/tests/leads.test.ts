@@ -53,73 +53,6 @@ describe('leads API', () => {
     vi.spyOn(logger, 'info').mockImplementation(() => undefined);
   });
 
-  it('validates public lead body', async () => {
-    const res = await request(app).post('/api/public/leads').send({});
-    expect(res.status).toBe(400);
-  });
-
-  it('creates public lead without auth', async () => {
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'demandes_clients') {
-        return mockChain({
-          data: {
-            id: 'lead-1',
-            nom: 'Jean',
-            email: 'client@test.com',
-            ref_agent_id: null,
-            listing_id: null,
-            type_demande: 'rappel',
-          },
-          error: null,
-        });
-      }
-      if (table === 'agents') return mockChain({ data: [{ email: 'admin@test.com' }], error: null });
-      return mockChain({ data: [], error: null });
-    });
-    const res = await request(app).post('/api/public/leads').send({
-      nom: 'Jean Test',
-      typeDemande: 'rappel',
-      email: 'client@test.com',
-    });
-    expect(res.status).toBe(201);
-  });
-
-  it('stores suggested ref_agent_id without auto-assigning', async () => {
-    const agentId = '00000000-0000-4000-8000-000000000001';
-    let agentCalls = 0;
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'demandes_clients') {
-        return mockChain({
-          data: {
-            id: 'lead-1',
-            nom: 'Jean',
-            ref_agent_id: agentId,
-            assigne_a: null,
-            listing_id: null,
-            type_demande: 'rappel',
-          },
-          error: null,
-        });
-      }
-      if (table === 'agents') {
-        agentCalls += 1;
-        if (agentCalls === 1) {
-          return mockChain({ data: { id: agentId, nom: 'Marie', actif: true }, error: null });
-        }
-        return mockChain({ data: [], error: null });
-      }
-      return mockChain({ data: [], error: null });
-    });
-    const res = await request(app).post('/api/public/leads').send({
-      nom: 'Jean Test',
-      typeDemande: 'rappel',
-      refAgentId: agentId,
-    });
-    expect(res.status).toBe(201);
-    expect(res.body.data.ref_agent_id).toBe(agentId);
-    expect(res.body.data.assigne_a).toBeNull();
-  });
-
   it('assigns lead and archives with delete_after', async () => {
     const agentUuid = '00000000-0000-4000-8000-000000000002';
     mockGetUser.mockResolvedValue({
@@ -165,28 +98,4 @@ describe('leads API', () => {
     expect(res.body.data.delete_after).toBeTruthy();
   });
 
-  it('sends admin and client emails on public lead when email present', async () => {
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'demandes_clients') {
-        return mockChain({
-          data: { id: 'l1', nom: 'Jean', email: 'client@test.com', listing_id: null, type_demande: 'rappel' },
-          error: null,
-        });
-      }
-      if (table === 'agents') {
-        return mockChain({ data: [{ email: 'admin1@test.com' }, { email: 'admin2@test.com' }], error: null });
-      }
-      return mockChain({ data: [], error: null });
-    });
-    await request(app).post('/api/public/leads').send({
-      nom: 'Jean',
-      typeDemande: 'rappel',
-      email: 'client@test.com',
-    });
-    await new Promise((r) => setTimeout(r, 30));
-    const skipped = (logger.info as ReturnType<typeof vi.fn>).mock.calls.filter(
-      (c) => c[1] === 'Email skipped (EMAIL_ENABLED=false)',
-    );
-    expect(skipped.length).toBeGreaterThanOrEqual(3);
-  });
 });

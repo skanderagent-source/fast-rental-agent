@@ -50,16 +50,6 @@ async function sendTemplate(to: string, content: templates.EmailContent) {
 }
 
 export const emailService = {
-  notifyLeadReceivedAdmin: (
-    to: string,
-    input: Parameters<typeof templates.leadReceivedAdmin>[0],
-  ) => void sendTemplate(to, templates.leadReceivedAdmin(input)),
-
-  notifyLeadConfirmationClient: (
-    to: string,
-    input: Parameters<typeof templates.leadConfirmationClient>[0],
-  ) => void sendTemplate(to, templates.leadConfirmationClient(input)),
-
   notifyLeadAssignedAgent: (
     to: string,
     input: Parameters<typeof templates.leadAssignedAgent>[0],

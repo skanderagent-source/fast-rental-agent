@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
 import { esc } from '../../lib/format';
@@ -13,13 +13,6 @@ export function DemandesPanel() {
   const queryClient = useQueryClient();
   const [includeArchived, setIncludeArchived] = useState(false);
   const toast = useToast();
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    void api.post('/api/leads/mark-read').then(() => {
-      void queryClient.invalidateQueries({ queryKey: ['leads-badge'] });
-    });
-  }, [isAdmin, queryClient]);
 
   const { data, refetch, isLoading } = useQuery({
     queryKey: ['leads', includeArchived],
@@ -67,6 +60,7 @@ export function DemandesPanel() {
                   await api.post(`/api/leads/${lead.id}/assign`, { agentId: e.target.value });
                   toast('✅ Assigné et archivé');
                   void refetch();
+                  void queryClient.invalidateQueries({ queryKey: ['leads-badge'] });
                 }}
                 style={{ flex: 1 }}
               >

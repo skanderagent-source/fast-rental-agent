@@ -25,8 +25,6 @@ import * as templates from '../src/modules/email/templates.js';
 describe('email templates', () => {
   it('exports one function per template with subject/html/text', () => {
     for (const fn of [
-      templates.leadReceivedAdmin,
-      templates.leadConfirmationClient,
       templates.leadAssignedAgent,
       templates.mediaApproved,
       templates.mediaRejected,
@@ -65,15 +63,6 @@ describe('email service', () => {
     await emailService.sendTestEmail('agent@test.com');
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'agent@test.com' }),
-      'Email skipped (EMAIL_ENABLED=false)',
-    );
-  });
-
-  it('notifyLeadConfirmationClient skips when disabled', async () => {
-    emailService.notifyLeadConfirmationClient('client@test.com', { nom: 'Jean' });
-    await new Promise((r) => setTimeout(r, 10));
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'client@test.com' }),
       'Email skipped (EMAIL_ENABLED=false)',
     );
   });

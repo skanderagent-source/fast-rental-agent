@@ -39,7 +39,7 @@ const phases = [
     const tpl = fs.readFileSync('apps/backend/src/modules/email/templates.ts', 'utf8');
     const svc = fs.readFileSync('apps/backend/src/modules/email/email.service.ts', 'utf8');
     return fs.existsSync('scripts/verify-email.mjs')
-      && tpl.includes('export function leadReceivedAdmin')
+      && tpl.includes('export function leadAssignedAgent')
       && tpl.includes('export function accountCreated')
       && svc.includes('export async function sendEmail')
       && svc.includes('logger.error')

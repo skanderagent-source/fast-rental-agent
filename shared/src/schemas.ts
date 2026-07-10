@@ -26,19 +26,6 @@ export const createListingSchema = z.object({
 
 export const updateListingSchema = createListingSchema.partial();
 
-export const createLeadSchema = z.object({
-  listingId: z.string().uuid().optional().nullable(),
-  nom: z.string().min(1),
-  telephone: z.string().optional().nullable(),
-  email: z.string().email().optional().nullable(),
-  revenuMensuel: z.coerce.number().optional().nullable(),
-  scoreCredit: z.coerce.number().optional().nullable(),
-  dateDemenagement: z.string().optional().nullable(),
-  message: z.string().optional().nullable(),
-  typeDemande: z.enum(['rappel', 'prequal']).default('rappel'),
-  refAgentId: z.string().uuid().optional().nullable(),
-});
-
 export const assignLeadSchema = z.object({
   agentId: z.string().uuid(),
 });
