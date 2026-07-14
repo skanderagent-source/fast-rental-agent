@@ -1,11 +1,13 @@
-import { Router } from 'express';
+import { Router, raw } from 'express';
 import {
   createListingSchema,
   listingsQuerySchema,
   profilePhotoUploadSchema,
   rejectMediaSchema,
+  reorderListingMediaSchema,
   requestMediaUploadSchema,
   updateListingSchema,
+  MAX_VIDEO_SIZE_MB,
 } from '@fast-rental/shared';
 import { requireAuth, optionalAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
@@ -23,17 +25,26 @@ import {
   getMediaDownloadUrl,
   listListingMedia,
   listListings,
+  listMapListings,
+  listUserMedia,
   rejectMedia,
+  reorderListingMedia,
   requestMediaUpload,
   requestProfilePhotoUpload,
   softDeleteListing,
   updateListing,
+  uploadMediaFile,
 } from './listings.service.js';
 
 const router = Router();
 
 router.get('/', requireAuth, validateRequest(listingsQuerySchema, 'query'), asyncHandler(async (req, res) => {
   const data = await listListings(req.query as never, false);
+  res.json({ data });
+}));
+
+router.get('/map', requireAuth, asyncHandler(async (_req, res) => {
+  const data = await listMapListings();
   res.json({ data });
 }));
 
@@ -53,6 +64,12 @@ router.post('/me/profile-photo/upload-url', requireAuth, validateRequest(profile
 router.post('/me/profile-photo/:mediaId/complete', requireAuth, asyncHandler(async (req, res) => {
   const user = res.locals.user as { id: string };
   const data = await completeProfilePhoto(user.id, paramId(req.params.mediaId));
+  res.json({ data });
+}));
+
+router.get('/me/media', requireAuth, asyncHandler(async (_req, res) => {
+  const user = res.locals.user as { id: string };
+  const data = await listUserMedia(user.id);
   res.json({ data });
 }));
 
@@ -103,11 +120,28 @@ router.get('/:id/media', requireAuth, asyncHandler(async (req, res) => {
   res.json({ data });
 }));
 
+router.put('/:id/media/order', requireAuth, validateRequest(reorderListingMediaSchema), asyncHandler(async (req, res) => {
+  const data = await reorderListingMedia(paramId(req.params.id), req.body.mediaIds);
+  res.json({ data });
+}));
+
 router.post('/:id/media/upload-url', requireAuth, validateRequest(requestMediaUploadSchema), asyncHandler(async (req, res) => {
   const user = res.locals.user as { id: string };
   const data = await requestMediaUpload(paramId(req.params.id), user.id, req.body);
   res.json({ data });
 }));
+
+router.put(
+  '/:id/media/:mediaId/file',
+  requireAuth,
+  raw({ type: () => true, limit: `${MAX_VIDEO_SIZE_MB}mb` }),
+  asyncHandler(async (req, res) => {
+    const user = res.locals.user as { id: string };
+    const body = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+    const data = await uploadMediaFile(paramId(req.params.id), paramId(req.params.mediaId), user.id, body);
+    res.json({ data });
+  }),
+);
 
 router.post('/:id/media/:mediaId/complete', requireAuth, asyncHandler(async (req, res) => {
   const user = res.locals.user as { id: string };

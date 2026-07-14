@@ -1,6 +1,8 @@
 import {
   MAX_IMAGES_PER_LISTING,
+  MAX_MAP_LISTINGS,
   MAX_VIDEOS_PER_LISTING,
+  type MapListing,
   validateMediaMime,
 } from '@fast-rental/shared';
 import { randomUUID } from 'node:crypto';
@@ -8,7 +10,14 @@ import { env } from '../../config/env.js';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { getPagination } from '../../utils/pagination.js';
 import { slugifyAddress, safeFilename } from '../../utils/slug.js';
-import { createDownloadUrl, createUploadUrl, deleteObject, objectExists } from '../media/r2.service.js';
+import {
+  createDownloadUrl,
+  createUploadUrl,
+  deleteObject,
+  isLocalStorage,
+  objectExists,
+  putObject,
+} from '../media/storage.service.js';
 import { logActivity } from '../activity/activity.service.js';
 import { emailService } from '../email/email.service.js';
 import { geocodeListing } from './listings.geocode.js';
@@ -19,6 +28,8 @@ const PUBLIC_FIELDS = [
   'id', 'adresse', 'quartier', 'prix', 'taille', 'statut', 'electromenagers',
   'latitude', 'longitude', 'approved_media_count', 'approved_image_count',
 ];
+const MAP_QUERY_PAGE_SIZE = 1000;
+const ADDRESS_FIELDS = ['adresse', 'quartier', 'ville'] as const;
 
 function pickPublic(listing: Record<string, unknown>) {
   const out: Record<string, unknown> = {};
@@ -100,6 +111,105 @@ export async function listListings(query: {
   };
 }
 
+export async function listMapListings() {
+  const mapFields = 'id,adresse,quartier,prix,statut,latitude,longitude';
+  const firstTo = Math.min(MAP_QUERY_PAGE_SIZE, MAX_MAP_LISTINGS) - 1;
+  const {
+    data: firstPage,
+    error: firstPageError,
+    count,
+  } = await supabaseAdmin
+    .from('logements')
+    .select(mapFields, { count: 'exact' })
+    .is('deleted_at', null)
+    .order('adresse', { ascending: true })
+    .order('id', { ascending: true })
+    .range(0, firstTo);
+  if (firstPageError) throw firstPageError;
+
+  const total = count ?? firstPage?.length ?? 0;
+  const itemCount = Math.min(total, MAX_MAP_LISTINGS);
+  const ranges: Array<[number, number]> = [];
+  for (let from = MAP_QUERY_PAGE_SIZE; from < itemCount; from += MAP_QUERY_PAGE_SIZE) {
+    ranges.push([from, Math.min(from + MAP_QUERY_PAGE_SIZE - 1, itemCount - 1)]);
+  }
+
+  const remainingPages = await Promise.all(ranges.map(async ([from, to]) => {
+    const { data, error } = await supabaseAdmin
+      .from('logements')
+      .select(mapFields)
+      .is('deleted_at', null)
+      .order('adresse', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as MapListing[];
+  }));
+
+  const items = [
+    ...((firstPage ?? []) as MapListing[]),
+    ...remainingPages.flat(),
+  ].slice(0, MAX_MAP_LISTINGS);
+
+  return {
+    items,
+    total,
+    truncated: total > MAX_MAP_LISTINGS,
+  };
+}
+
+export async function listUserMedia(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from('listing_media')
+    .select('*, logements!inner(id,adresse,deleted_at)')
+    .eq('uploaded_by', userId)
+    .not('upload_completed_at', 'is', null)
+    .is('logements.deleted_at', null)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+
+  const enriched = await Promise.all((data ?? []).map(async (row) => {
+    const listingRelation = row.logements as
+      | { id?: string; adresse?: string }
+      | Array<{ id?: string; adresse?: string }>
+      | null;
+    const listing = Array.isArray(listingRelation) ? listingRelation[0] : listingRelation;
+    const media = { ...row };
+    delete media.logements;
+    const viewUrl = await createDownloadUrl(media.object_key, media.original_filename, true);
+    return {
+      listingId: listing?.id ?? media.listing_id,
+      adresse: listing?.adresse ?? 'Logement',
+      media: {
+        ...media,
+        viewUrl,
+        thumbnailUrl: media.type === 'image' ? viewUrl : undefined,
+      },
+    };
+  }));
+
+  const groups = new Map<string, {
+    listingId: string;
+    adresse: string;
+    media: Array<Record<string, unknown>>;
+  }>();
+  for (const item of enriched) {
+    let group = groups.get(item.listingId);
+    if (!group) {
+      group = {
+        listingId: item.listingId,
+        adresse: item.adresse,
+        media: [],
+      };
+      groups.set(item.listingId, group);
+    }
+    group.media.push(item.media);
+  }
+
+  return [...groups.values()].sort((a, b) => a.adresse.localeCompare(b.adresse, 'fr'));
+}
+
 export async function getListing(id: string, publicSafe = false) {
   const { data, error } = await supabaseAdmin
     .from('logements')
@@ -119,14 +229,14 @@ export async function createListing(input: Record<string, unknown>, createdBy: s
     source: input.source ?? 'manual',
     sheet_row_id: `${slug}|manual`,
     created_by: createdBy,
-    geocoding_status: input.latitude && input.longitude ? 'manual' : 'pending',
+    geocoding_status: input.latitude != null && input.longitude != null ? 'manual' : 'pending',
   };
   const { data, error } = await supabaseAdmin.from('logements').insert(payload).select('*').single();
   if (error) {
     if (error.code === '23505') throw conflict('Cette adresse existe déjà');
     throw error;
   }
-  if (!input.latitude || !input.longitude) {
+  if (input.latitude == null || input.longitude == null) {
     void geocodeListing(data.id);
   }
   return data;
@@ -138,13 +248,35 @@ export async function updateListing(id: string, input: Record<string, unknown>) 
   for (const key of Object.keys(input)) {
     if (input[key] !== undefined) manualOverrides[key] = true;
   }
+  const addressChanged = ADDRESS_FIELDS.some(
+    (field) => input[field] !== undefined && input[field] !== existing[field],
+  );
+  const coordinatesChanged = ['latitude', 'longitude'].some(
+    (field) => input[field] !== undefined && input[field] !== existing[field],
+  );
+  const hasCompleteCoordinates = input.latitude != null && input.longitude != null;
+  const shouldClearCoordinates = coordinatesChanged && !hasCompleteCoordinates;
+  const needsGeocode = (addressChanged && !(coordinatesChanged && hasCompleteCoordinates))
+    || shouldClearCoordinates;
   const updates = {
     ...input,
     manual_overrides: manualOverrides,
-    geocoding_status: input.latitude !== undefined || input.longitude !== undefined ? 'manual' : existing.geocoding_status,
+    ...(needsGeocode
+      ? {
+        ...(shouldClearCoordinates ? { latitude: null, longitude: null } : {}),
+        geocoded_at: null,
+        geocoding_status: 'pending',
+        geocoding_error: null,
+      }
+      : {
+        geocoding_status: coordinatesChanged && hasCompleteCoordinates
+          ? 'manual'
+          : existing.geocoding_status,
+      }),
   };
   const { data, error } = await supabaseAdmin.from('logements').update(updates).eq('id', id).select('*').single();
   if (error) throw error;
+  if (needsGeocode) void geocodeListing(data.id);
   return data;
 }
 
@@ -160,12 +292,12 @@ export async function softDeleteListing(id: string) {
 }
 
 export async function listListingMedia(listingId: string, approvedOnly = false) {
-  let q = supabaseAdmin.from('listing_media').select('*').eq('listing_id', listingId).order('created_at');
+  let q = supabaseAdmin.from('listing_media').select('*').eq('listing_id', listingId).order('sort_order').order('created_at');
   if (approvedOnly) q = q.eq('status', 'approved');
   const { data, error } = await q;
   if (error) throw error;
   const items = await Promise.all((data ?? []).map(async (m) => {
-    if (m.upload_completed_at && (m.status === 'approved' || !approvedOnly)) {
+    if (m.upload_completed_at && (m.status === 'approved' || m.status === 'pending' || !approvedOnly)) {
       const viewUrl = await createDownloadUrl(m.object_key, m.original_filename, true);
       const thumbnailUrl = m.type === 'image' ? viewUrl : undefined;
       return { ...m, viewUrl, thumbnailUrl };
@@ -201,7 +333,12 @@ export async function requestMediaUpload(
     throw error;
   }
   const uploadUrl = await createUploadUrl(objectKey, input.mimeType);
-  return { mediaId, uploadUrl, objectKey };
+  return {
+    mediaId,
+    uploadUrl,
+    objectKey,
+    uploadMode: isLocalStorage() ? 'proxy' : 'signed',
+  };
 }
 
 export async function completeMediaUpload(listingId: string, mediaId: string, userId: string) {
@@ -215,9 +352,15 @@ export async function completeMediaUpload(listingId: string, mediaId: string, us
   if (media.uploaded_by !== userId) throw forbidden('Non autorisé');
   const exists = await objectExists(media.object_key);
   if (!exists) throw conflict('Upload introuvable dans R2', 'UPLOAD_NOT_FOUND');
+  const now = new Date().toISOString();
   const { data, error: updateError } = await supabaseAdmin
     .from('listing_media')
-    .update({ upload_completed_at: new Date().toISOString() })
+    .update({
+      upload_completed_at: now,
+      status: 'approved',
+      approved_at: now,
+      approved_by: userId,
+    })
     .eq('id', mediaId)
     .select('*')
     .single();
@@ -230,6 +373,23 @@ export async function completeMediaUpload(listingId: string, mediaId: string, us
     logementId: listingId,
   });
   return data;
+}
+
+export async function uploadMediaFile(listingId: string, mediaId: string, userId: string, body: Buffer) {
+  const { data: media, error } = await supabaseAdmin
+    .from('listing_media')
+    .select('*')
+    .eq('id', mediaId)
+    .eq('listing_id', listingId)
+    .single();
+  if (error || !media) throw notFound('Média introuvable');
+  if (media.uploaded_by !== userId) throw forbidden('Non autorisé');
+  if (media.upload_completed_at) throw conflict('Média déjà uploadé');
+  if (body.length > media.size_bytes) {
+    throw Object.assign(new Error('Fichier plus grand que la taille déclarée'), { status: 400, code: 'VALIDATION_ERROR' });
+  }
+  await putObject(media.object_key, body, media.mime_type);
+  return completeMediaUpload(listingId, mediaId, userId);
 }
 
 export async function approveMedia(mediaId: string, adminId: string) {
@@ -294,12 +454,42 @@ export async function getMediaDownloadUrl(mediaId: string, isAuthenticated = fal
 export async function deleteMedia(mediaId: string, userId: string, isAdmin: boolean) {
   const { data, error } = await supabaseAdmin.from('listing_media').select('*').eq('id', mediaId).single();
   if (error || !data) throw notFound('Média introuvable');
-  if (!isAdmin && (data.uploaded_by !== userId || data.status !== 'pending')) {
+  if (!isAdmin && data.uploaded_by !== userId) {
     throw forbidden('Non autorisé');
   }
   await deleteObject(data.object_key);
   await supabaseAdmin.from('listing_media').delete().eq('id', mediaId);
   return { deleted: true };
+}
+
+export async function reorderListingMedia(listingId: string, mediaIds: string[]) {
+  await getListing(listingId);
+
+  const { data: existing, error } = await supabaseAdmin
+    .from('listing_media')
+    .select('id')
+    .eq('listing_id', listingId);
+  if (error) throw error;
+
+  const existingIds = new Set((existing ?? []).map((row) => row.id));
+  if (mediaIds.length !== existingIds.size) {
+    throw Object.assign(new Error('La liste de médias est incomplète ou invalide'), { status: 400, code: 'VALIDATION_ERROR' });
+  }
+  for (const id of mediaIds) {
+    if (!existingIds.has(id)) {
+      throw Object.assign(new Error('Média introuvable pour ce logement'), { status: 400, code: 'VALIDATION_ERROR' });
+    }
+  }
+
+  const updates = mediaIds.map((id, index) =>
+    supabaseAdmin.from('listing_media').update({ sort_order: index }).eq('id', id).eq('listing_id', listingId),
+  );
+  const results = await Promise.all(updates);
+  for (const result of results) {
+    if (result.error) throw result.error;
+  }
+
+  return listListingMedia(listingId, false);
 }
 
 export async function requestProfilePhotoUpload(userId: string, input: { filename: string; mimeType: string; sizeBytes: number }) {

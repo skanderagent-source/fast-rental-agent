@@ -66,6 +66,10 @@ export const rejectMediaSchema = z.object({
   reason: z.string().optional(),
 });
 
+export const reorderListingMediaSchema = z.object({
+  mediaIds: z.array(z.string().uuid()).min(1),
+});
+
 export const updateProfileSchema = z.object({
   nom: z.string().min(1).optional(),
   profilePhotoMediaId: z.string().uuid().nullable().optional(),
@@ -93,7 +97,7 @@ export const listingsQuerySchema = z.object({
   taille: z.string().optional(),
   source: z.string().optional(),
   page: z.coerce.number().min(1).default(1),
-  pageSize: z.coerce.number().min(1).max(100).default(50),
+  pageSize: z.coerce.number().min(1).max(5000).default(50),
 });
 
 export const leadsQuerySchema = z.object({

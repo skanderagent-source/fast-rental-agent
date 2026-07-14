@@ -20,6 +20,15 @@ export async function createUploadUrl(objectKey: string, mimeType: string) {
   return getSignedUrl(r2, command, { expiresIn: env.R2_SIGNED_UPLOAD_EXPIRES_SECONDS });
 }
 
+export async function putObject(objectKey: string, body: Buffer, mimeType: string) {
+  await r2.send(new PutObjectCommand({
+    Bucket: env.R2_BUCKET,
+    Key: objectKey,
+    Body: body,
+    ContentType: mimeType,
+  }));
+}
+
 export async function createDownloadUrl(objectKey: string, filename: string, inline = false) {
   const { GetObjectCommand } = await import('@aws-sdk/client-s3');
   const command = new GetObjectCommand({

@@ -43,6 +43,16 @@ Checks every plan phase artifact, then runs build + tests.
 ## Local
 
 ```bash
+npm run start:local
+```
+
+Starts setup checks, backend (:4000), and frontend (:5173). On failure, the script prints which step failed and how to debug.
+
+Options: `--skip-install`, `--skip-db`
+
+Manual smoke:
+
+```bash
 npm run smoke
 ```
 

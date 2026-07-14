@@ -5,9 +5,10 @@ import {
   type ParsedSheetRow,
   type SheetSourceKey,
   buildColumnIndex,
+  dedupeParsedSheetRows,
   getColumnValue,
   mapFastRentalRow,
-  mapOrchaRow,
+  // mapOrchaRow,
   normalizeHeader,
 } from './sheetMappings.js';
 
@@ -73,7 +74,8 @@ export async function readSheetRows(sourceKey: SheetSourceKey): Promise<{ rows: 
   const headerRowIndex = detectHeaderRow(values, config.addressHeaderHint, config.headerRow);
   const headers = values[headerRowIndex] ?? [];
   const col = buildColumnIndex(headers);
-  const mapper = sourceKey === 'fastRental' ? mapFastRentalRow : mapOrchaRow;
+  const mapper = mapFastRentalRow;
+  // sourceKey === 'fastRental' ? mapFastRentalRow : mapOrchaRow;
   const rows: ParsedSheetRow[] = [];
   let rowsSeen = 0;
 
@@ -99,10 +101,11 @@ export async function readSheetRows(sourceKey: SheetSourceKey): Promise<{ rows: 
 
 export async function collectAllSheetRows() {
   const fast = await readSheetRows('fastRental');
-  const orcha = await readSheetRows('orcha');
+  // Re-enable when GOOGLE_SHEET_ORCHA_ID is configured:
+  // const orcha = await readSheetRows('orcha');
   return {
-    rows: [...fast.rows, ...orcha.rows],
-    stats: [fast.stats, orcha.stats],
+    rows: dedupeParsedSheetRows([...fast.rows]), // ...fast.rows, ...orcha.rows
+    stats: [fast.stats], // fast.stats, orcha.stats],
   };
 }
 

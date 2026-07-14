@@ -24,11 +24,13 @@ const schema = z.object({
   R2_BUCKET: z.string().min(1),
   R2_SIGNED_UPLOAD_EXPIRES_SECONDS: z.coerce.number().default(900),
   R2_SIGNED_DOWNLOAD_EXPIRES_SECONDS: z.coerce.number().default(300),
+  STORAGE_DRIVER: z.enum(['r2', 'local', 'auto']).default('auto'),
   GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().optional().default(''),
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z.string().optional().default(''),
   GOOGLE_SHEET_FAST_RENTAL_ID: z.string().min(1),
-  GOOGLE_SHEET_ORCHA_ID: z.string().min(1),
-  GOOGLE_SHEET_ORCHA_GID: z.string().min(1),
+  // Re-enable when Orcha sheet sync is needed:
+  // GOOGLE_SHEET_ORCHA_ID: z.string().min(1),
+  // GOOGLE_SHEET_ORCHA_GID: z.string().min(1),
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_ENABLED: boolFromEnv.default('false'),
   EMAIL_FROM: z.string().optional().default(''),
@@ -36,6 +38,7 @@ const schema = z.object({
   GEOCODING_PROVIDER: z.string().default('nominatim'),
   GEOCODING_USER_AGENT: z.string().min(1),
   GEOCODING_BASE_URL: z.string().url(),
+  RUN_SHEET_SYNC_ON_STARTUP: boolFromEnv.default('false'),
   CRON_SHEET_SYNC: z.string().default('0 */6 * * *'),
   CRON_ARCHIVE_DELETE: z.string().default('0 3 * * *'),
   CRON_STALE_MEDIA_CLEANUP: z.string().default('30 3 * * *'),
@@ -49,7 +52,18 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+function resolveStorageDriver(data: z.infer<typeof schema>) {
+  if (data.NODE_ENV === 'test') return 'r2' as const;
+  if (data.STORAGE_DRIVER === 'r2') return 'r2' as const;
+  if (data.STORAGE_DRIVER === 'local') return 'local' as const;
+  if (data.NODE_ENV === 'development' && data.R2_ACCESS_KEY_ID.startsWith('cfat_')) {
+    return 'local' as const;
+  }
+  return 'r2' as const;
+}
+
 export const env = {
   ...parsed.data,
+  STORAGE_DRIVER: resolveStorageDriver(parsed.data),
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: parsed.data.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, '\n'),
 };

@@ -1,22 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Download, Trash2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '../../lib/apiClient';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError } from '../../lib/apiClient';
 import { env } from '../../lib/env';
 import { esc, formatPrice, statusClass, statusLabel } from '../../lib/format';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { useToast } from '../../components/common/ToastProvider';
 import { ApplicationMessageModal } from '../../components/listings/ApplicationMessageModal';
 import { FacebookAdModal } from '../../components/listings/FacebookAdModal';
-import { Modal } from '../../components/common/Modal';
+import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { MediaLightbox } from '../../components/common/MediaLightbox';
 import type { Listing, ListingMedia } from '@fast-rental/shared';
+import { MAX_IMAGES_PER_LISTING, MAX_VIDEOS_PER_LISTING } from '@fast-rental/shared';
 
 type ListingsResponse = {
   items: Listing[];
   summary: { total: number; available: number; onHold: number; averagePrice: number | null };
 };
-
-type ListingWithCounts = Listing & { pending_media_count?: number };
 
 export function SearchPanel() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -72,39 +73,66 @@ export function SearchPanel() {
 
   return (
     <div className="panel-scroll">
-      <input className="search-input" placeholder="Adresse, quartier..." value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher un logement" />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-        <select value={quartier} onChange={(e) => setQuartier(e.target.value)} aria-label="Filtrer par quartier"><option value="">Tous les quartiers</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
-        <select value={statut} onChange={(e) => setStatut(e.target.value)} aria-label="Filtrer par statut">
-          <option value="">Tous statuts</option>
-          <option value="Available">Disponible</option>
-          <option value="On Hold">En attente</option>
-          <option value="Not Available">Non dispo</option>
-          <option value="In Reno">Rénovation</option>
-          <option value="Rented">Loué</option>
-        </select>
-        <select value={taille} onChange={(e) => setTaille(e.target.value)} aria-label="Filtrer par taille">
-          <option value="">Toutes tailles</option>
-          {['2.5', '3.5', '4.5', '5.5', '6.5'].map((s) => <option key={s} value={s}>{s} p.</option>)}
-        </select>
-        <select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Filtrer par source">
-          <option value="">Toutes sources</option>
-          <option value="Fast Rental">Fast Rental</option>
-          <option value="Orcha">Orcha</option>
-          <option value="manual">Manuel</option>
-        </select>
+      <div className="search-toolbar">
+        <div className="search-toolbar__search">
+          <label className="search-filter-label" htmlFor="search-q">Recherche</label>
+          <input
+            id="search-q"
+            className="search-input search-input--toolbar"
+            placeholder="Adresse, quartier..."
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label="Rechercher un logement"
+          />
+        </div>
+        <div className="search-filters">
+          <div className="search-filter-field">
+            <label className="search-filter-label" htmlFor="filter-quartier">Quartier</label>
+            <select id="filter-quartier" className="search-filter-select" value={quartier} onChange={(e) => setQuartier(e.target.value)}>
+              <option value="">Tous</option>
+              {areas.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <div className="search-filter-field">
+            <label className="search-filter-label" htmlFor="filter-statut">Statut</label>
+            <select id="filter-statut" className="search-filter-select" value={statut} onChange={(e) => setStatut(e.target.value)}>
+              <option value="">Tous</option>
+              <option value="Available">Disponible</option>
+              <option value="On Hold">En attente</option>
+              <option value="Not Available">Non dispo</option>
+              <option value="In Reno">Rénovation</option>
+              <option value="Rented">Loué</option>
+            </select>
+          </div>
+          <div className="search-filter-field">
+            <label className="search-filter-label" htmlFor="filter-taille">Taille</label>
+            <select id="filter-taille" className="search-filter-select" value={taille} onChange={(e) => setTaille(e.target.value)}>
+              <option value="">Toutes</option>
+              {['2.5', '3.5', '4.5', '5.5', '6.5'].map((s) => <option key={s} value={s}>{s} p.</option>)}
+            </select>
+          </div>
+          <div className="search-filter-field">
+            <label className="search-filter-label" htmlFor="filter-source">Source</label>
+            <select id="filter-source" className="search-filter-select" value={source} onChange={(e) => setSource(e.target.value)}>
+              <option value="">Toutes</option>
+              <option value="Fast Rental">Fast Rental</option>
+              <option value="Orcha">Orcha</option>
+              <option value="manual">Manuel</option>
+            </select>
+          </div>
+        </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6, marginBottom: 12 }}>
+      <div className="search-stats">
         <Stat num={data?.summary.total ?? 0} label="Total" />
         <Stat num={data?.summary.available ?? 0} label="Dispo" color="var(--green)" />
         <Stat num={data?.summary.onHold ?? 0} label="Attente" color="var(--amber)" />
         <Stat num={data?.summary.averagePrice ? Math.round(data.summary.averagePrice).toLocaleString('fr-CA') + '$' : '-'} label="Moy." />
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="search-results">
         {(data?.items ?? []).map((listing) => (
           <ListingCard
             key={listing.id}
-            listing={listing as ListingWithCounts}
+            listing={listing}
             open={openId === listing.id}
             onToggle={() => setOpenId(openId === listing.id ? null : listing.id)}
             toast={toast}
@@ -143,14 +171,11 @@ function Stat({ num, label, color }: { num: number | string; label: string; colo
 }
 
 function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenAction, onOpenFb }: {
-  listing: ListingWithCounts; open: boolean; onToggle: () => void; toast: (m: string) => void;
+  listing: Listing; open: boolean; onToggle: () => void; toast: (m: string) => void;
   profile: { id: string; nom: string } | null; isAdmin: boolean;
   onOpenAction: (prefix: 'En application' | 'Request of approval') => void;
   onOpenFb: () => void;
 }) {
-  const [rentOpen, setRentOpen] = useState(false);
-  const [rentValue, setRentValue] = useState(listing.prix != null ? String(listing.prix) : '');
-
   const { data: detail, refetch: refetchDetail } = useQuery({
     queryKey: ['listing', listing.id],
     queryFn: () => api.get<{ listing: Listing; media: ListingMedia[] }>(`/api/listings/${listing.id}`),
@@ -164,105 +189,238 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
     toast("Lien copié. L'admin verra cet agent comme suggestion.");
   }
 
+  const queryClient = useQueryClient();
+  const [deleteTarget, setDeleteTarget] = useState<ListingMedia | null>(null);
+  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
+  const [previewMedia, setPreviewMedia] = useState<ListingMedia | null>(null);
+
+  function startDelete(media: ListingMedia) {
+    setDeleteTarget(media);
+    setDeleteStep(1);
+  }
+
+  function cancelDelete() {
+    setDeleteTarget(null);
+    setDeleteStep(0);
+  }
+
+  async function finishDelete() {
+    if (!deleteTarget) return;
+    const deleted = deleteTarget;
+    try {
+      await api.delete(`/api/listings/media/${deleted.id}`);
+      queryClient.setQueriesData<{ listing: Listing; media: ListingMedia[] }>(
+        { queryKey: ['listing', listing.id] },
+        (prev) => (prev ? { ...prev, media: prev.media.filter((m) => m.id !== deleted.id) } : prev),
+      );
+      queryClient.setQueriesData<Array<{ listingId: string; adresse: string; media: ListingMedia[] }>>(
+        { queryKey: ['my-media-grouped'] },
+        (prev) =>
+          prev
+            ?.map((group) =>
+              group.listingId === deleted.listing_id
+                ? { ...group, media: group.media.filter((m) => m.id !== deleted.id) }
+                : group,
+            )
+            .filter((group) => group.media.length > 0) ?? prev,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['listing', listing.id] }),
+        queryClient.invalidateQueries({ queryKey: ['my-media-grouped'] }),
+      ]);
+      toast('Média supprimé');
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Suppression impossible';
+      toast(`⚠️ ${message}`);
+    } finally {
+      cancelDelete();
+    }
+  }
+
   async function uploadMedia(type: 'image' | 'video', file: File) {
-    const uploadMeta = await api.post<{ mediaId: string; uploadUrl: string }>(`/api/listings/${listing.id}/media/upload-url`, {
-      filename: file.name,
-      mimeType: file.type,
-      sizeBytes: file.size,
-      type,
+    const current = (detail?.media ?? []).filter((m) => m.upload_completed_at && m.type === type).length;
+    const max = type === 'image' ? MAX_IMAGES_PER_LISTING : MAX_VIDEOS_PER_LISTING;
+    if (current >= max) {
+      toast(`⚠️ Limite atteinte (${max} ${type === 'image' ? 'photos' : 'vidéo'} max par logement)`);
+      return false;
+    }
+    try {
+      const uploadMeta = await api.post<{
+        mediaId: string;
+        uploadUrl: string;
+        uploadMode: 'proxy' | 'signed';
+      }>(`/api/listings/${listing.id}/media/upload-url`, {
+        filename: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+        type,
+      });
+      if (uploadMeta.uploadMode === 'proxy') {
+        await api.uploadFile(`/api/listings/${listing.id}/media/${uploadMeta.mediaId}/file`, file);
+      } else {
+        const uploadResponse = await fetch(uploadMeta.uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type },
+        });
+        if (!uploadResponse.ok) {
+          throw new ApiError(uploadResponse.status, 'UPLOAD_FAILED', 'Échec de l’envoi du fichier');
+        }
+        await api.post(`/api/listings/${listing.id}/media/${uploadMeta.mediaId}/complete`);
+      }
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Échec de l\'upload';
+      toast(`⚠️ ${message}`);
+      return false;
+    }
+  }
+
+  async function moveMedia(index: number, direction: -1 | 1) {
+    const media = detail?.media ?? [];
+    const target = index + direction;
+    if (target < 0 || target >= media.length) return;
+    const next = [...media];
+    [next[index], next[target]] = [next[target], next[index]];
+    await api.put<ListingMedia[]>(`/api/listings/${listing.id}/media/order`, {
+      mediaIds: next.map((item) => item.id),
     });
-    await fetch(uploadMeta.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-    await api.post(`/api/listings/${listing.id}/media/${uploadMeta.mediaId}/complete`);
-    toast('✅ Média envoyé — en attente d\'approbation');
     void refetchDetail();
   }
 
-  async function recordRental() {
-    await api.post('/api/rentals', {
-      listingId: listing.id,
-      monthlyRent: rentValue ? Number(rentValue) : listing.prix,
-    });
-    toast('✅ Location enregistrée');
-    setRentOpen(false);
+  async function pickMedia(type: 'image' | 'video', files: FileList | null) {
+    if (!files?.length) return;
+    const max = type === 'image' ? MAX_IMAGES_PER_LISTING : MAX_VIDEOS_PER_LISTING;
+    const current = (detail?.media ?? []).filter((m) => m.upload_completed_at && m.type === type).length;
+    const remaining = Math.max(0, max - current);
+    if (remaining === 0) {
+      toast(`⚠️ Limite atteinte (${max} ${type === 'image' ? 'photos' : 'vidéo'} max par logement)`);
+      return;
+    }
+    const batch = Array.from(files).slice(0, remaining);
+    if (batch.length < files.length) {
+      toast(`⚠️ Seulement ${batch.length} fichier(s) ajouté(s) (limite ${max})`);
+    }
+    const uploaded = (await Promise.all(batch.map((file) => uploadMedia(type, file))))
+      .filter(Boolean)
+      .length;
+    if (uploaded === 0) return;
+
+    void queryClient.invalidateQueries({ queryKey: ['listings'] });
+    await Promise.all([
+      refetchDetail(),
+      queryClient.invalidateQueries({ queryKey: ['my-media-grouped'] }),
+    ]);
+    toast(uploaded === 1 ? '✅ Média ajouté' : `✅ ${uploaded} médias ajoutés`);
   }
 
-  const pendingCount = listing.pending_media_count ?? 0;
   const full = detail?.listing ?? listing;
 
   return (
-    <>
-      <div className="apt-card">
-        <div className="apt-card-header" style={{ padding: 12, cursor: 'pointer' }} onClick={onToggle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{esc(listing.adresse)}</div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {pendingCount > 0 && <span className="badge badge-a">⏳ {pendingCount} en attente</span>}
-              <span className={`badge ${statusClass(listing.statut)}`}>{statusLabel(listing.statut)}</span>
-            </div>
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>
-            📍 {esc(listing.quartier)}
-            {listing.taille ? ` · ${esc(listing.taille)} p.` : ''}
-            {listing.approved_image_count ? ' 📷' : ''}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-            <div style={{ fontSize: 17, fontWeight: 700 }}>{formatPrice(listing.prix)}</div>
-            <div style={{ fontSize: 10, color: 'var(--text3)' }}>{esc(listing.source)}</div>
+    <div className="apt-card">
+      <div className="apt-card-header" style={{ padding: 12, cursor: 'pointer' }} onClick={onToggle}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, paddingRight: open ? 36 : 0 }}>{esc(listing.adresse)}</div>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <span className={`badge ${statusClass(listing.statut)}`}>{statusLabel(listing.statut)}</span>
           </div>
         </div>
-        {open && (
-          <div style={{ padding: '0 12px 12px', borderTop: '1px solid var(--border)' }}>
-            {full.taille && <Info label="📐 Taille" value={`${full.taille} p.`} />}
-            {full.electromenagers && <Info label="🍳 Électro" value={full.electromenagers} />}
-            {full.ville && <Info label="🏙️ Ville" value={full.ville} />}
-            {full.date_disponibilite && <Info label="📅 Dispo le" value={full.date_disponibilite} />}
-            {full.notes && <Info label="📝 Notes" value={full.notes} />}
-            {full.code_entree && <Info label="🔑 Entrée" value={full.code_entree} />}
-            {full.concierge_tel && <Info label="📞 Concierge" value={full.concierge_tel} />}
-            {full.locataire_nom && <Info label="👤 Locataire" value={full.locataire_nom} />}
-            {full.locataire_tel && <Info label="📱 Tél. locataire" value={full.locataire_tel} />}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
-              <button type="button" className="btn-secondary" onClick={() => onOpenAction('En application')}>📲 En application</button>
-              <button type="button" className="btn-secondary" onClick={() => onOpenAction('Request of approval')}>📧 Request of Approval</button>
-              <button type="button" className="btn-secondary" style={{ gridColumn: '1 / -1' }} onClick={onOpenFb}>📢 Générer annonce Facebook</button>
-              <button type="button" className="btn-secondary" style={{ gridColumn: '1 / -1' }} onClick={copyReferral}>🔗 Copier mon lien</button>
-              <button type="button" className="btn-secondary" style={{ gridColumn: '1 / -1' }} onClick={() => setRentOpen(true)}>🏠 Enregistrer une location</button>
-              {isAdmin && (
-                <Link to={`/app/admin/listings/${listing.id}/edit`} className="btn-secondary" style={{ gridColumn: '1 / -1', textAlign: 'center', textDecoration: 'none' }}>
-                  ✏️ Modifier le logement
-                </Link>
-              )}
-              <label className="btn-secondary" style={{ textAlign: 'center' }}>
-                📷 Importer photos
-                <input hidden type="file" accept="image/*" multiple onChange={(e) => Array.from(e.target.files ?? []).forEach((f) => void uploadMedia('image', f))} />
-              </label>
-              <label className="btn-secondary" style={{ textAlign: 'center' }}>
-                🎬 Importer vidéos
-                <input hidden type="file" accept="video/*" multiple onChange={(e) => Array.from(e.target.files ?? []).forEach((f) => void uploadMedia('video', f))} />
-              </label>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 8, marginTop: 12 }}>
-              {(detail?.media ?? []).map((m) => (
-                <MediaTile key={m.id} media={m} />
-              ))}
-            </div>
-            <CommentsSection listingId={listing.id} userId={profile?.id} isAdmin={isAdmin} />
-          </div>
-        )}
+        <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>
+          📍 {esc(listing.quartier)}
+          {listing.taille ? ` · ${esc(listing.taille)} p.` : ''}
+          {listing.approved_image_count ? ' 📷' : ''}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>{formatPrice(listing.prix)}</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)' }}>{esc(listing.source)}</div>
+        </div>
       </div>
-
-      <Modal
-        open={rentOpen}
-        title="Enregistrer une location"
-        onClose={() => setRentOpen(false)}
-        footer={<button type="button" className="btn-add" onClick={() => void recordRental()}>Enregistrer</button>}
-      >
-        <div className="form-field">
-          <label htmlFor="rent-value">Loyer mensuel confirmé</label>
-          <input id="rent-value" type="number" value={rentValue} onChange={(e) => setRentValue(e.target.value)} />
+      {open && (
+        <div className="apt-card-detail">
+          <button
+            type="button"
+            className="apt-card-close"
+            aria-label="Fermer le logement"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}
+          >
+            <span aria-hidden>×</span>
+          </button>
+          {full.taille && <Info label="📐 Taille" value={`${full.taille} p.`} />}
+          {full.electromenagers && <Info label="🍳 Électro" value={full.electromenagers} />}
+          {full.ville && <Info label="🏙️ Ville" value={full.ville} />}
+          {full.date_disponibilite && <Info label="📅 Dispo le" value={full.date_disponibilite} />}
+          {full.notes && <Info label="📝 Notes" value={full.notes} />}
+          {full.code_entree && <Info label="🔑 Entrée" value={full.code_entree} />}
+          {full.concierge_tel && <Info label="📞 Concierge" value={full.concierge_tel} />}
+          {full.locataire_nom && <Info label="👤 Locataire" value={full.locataire_nom} />}
+          {full.locataire_tel && <Info label="📱 Tél. locataire" value={full.locataire_tel} />}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+            <button type="button" className="btn-secondary" onClick={() => onOpenAction('En application')}>📲 En application</button>
+            <button type="button" className="btn-secondary" onClick={() => onOpenAction('Request of approval')}>📧 Request of Approval</button>
+            <button type="button" className="btn-secondary" style={{ gridColumn: '1 / -1' }} onClick={onOpenFb}>📢 Générer annonce Facebook</button>
+            <button type="button" className="btn-secondary" style={{ gridColumn: '1 / -1' }} onClick={copyReferral}>🔗 Copier mon lien</button>
+            {isAdmin && (
+              <Link to={`/app/admin/listings/${listing.id}/edit`} className="btn-secondary" style={{ gridColumn: '1 / -1', textAlign: 'center', textDecoration: 'none' }}>
+                ✏️ Modifier le logement
+              </Link>
+            )}
+            <label className="btn-secondary" style={{ textAlign: 'center' }}>
+              📷 Photos (max {MAX_IMAGES_PER_LISTING})
+              <input hidden type="file" accept="image/*" multiple onChange={(e) => { void pickMedia('image', e.target.files); e.target.value = ''; }} />
+            </label>
+            <label className="btn-secondary" style={{ textAlign: 'center' }}>
+              🎬 Vidéo (max {MAX_VIDEOS_PER_LISTING})
+              <input hidden type="file" accept="video/*" onChange={(e) => { void pickMedia('video', e.target.files); e.target.value = ''; }} />
+            </label>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 8, marginTop: 12 }}>
+            {(detail?.media ?? []).filter((m) => m.upload_completed_at).map((m, index, media) => (
+              <MediaTile
+                key={m.id}
+                media={m}
+                index={index}
+                total={media.length}
+                canDelete={isAdmin || m.uploaded_by === profile?.id}
+                onMove={(direction) => void moveMedia(index, direction)}
+                onDelete={() => startDelete(m)}
+                onPreview={() => {
+                  if (m.viewUrl) setPreviewMedia(m);
+                  else toast('Aperçu indisponible');
+                }}
+              />
+            ))}
+          </div>
+          <CommentsSection listingId={listing.id} userId={profile?.id} isAdmin={isAdmin} />
         </div>
-      </Modal>
-    </>
+      )}
+
+      <ConfirmDialog
+        open={deleteStep === 1}
+        message="Ce média sera supprimé."
+        confirmLabel="Continuer"
+        cancelLabel="Annuler"
+        onConfirm={() => setDeleteStep(2)}
+        onCancel={cancelDelete}
+      />
+      <ConfirmDialog
+        open={deleteStep === 2}
+        message={`Vous êtes sur le point de supprimer ${deleteTarget?.type === 'video' ? 'cette vidéo' : 'cette photo'}. Êtes-vous sûr ?`}
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        onConfirm={() => void finishDelete()}
+        onCancel={cancelDelete}
+      />
+      <MediaLightbox
+        open={!!previewMedia}
+        url={previewMedia?.viewUrl}
+        type={previewMedia?.type === 'video' ? 'video' : 'image'}
+        alt={previewMedia?.original_filename}
+        onClose={() => setPreviewMedia(null)}
+      />
+    </div>
   );
 }
 
@@ -270,22 +428,113 @@ function Info({ label, value }: { label: string; value: string }) {
   return <div style={{ display: 'flex', gap: 6, marginTop: 8 }}><span style={{ fontSize: 11, color: 'var(--text3)', minWidth: 80 }}>{label}</span><span>{esc(value)}</span></div>;
 }
 
-function MediaTile({ media }: { media: ListingMedia }) {
+function MediaTile({
+  media,
+  index,
+  total,
+  canDelete,
+  onMove,
+  onDelete,
+  onPreview,
+}: {
+  media: ListingMedia;
+  index: number;
+  total: number;
+  canDelete: boolean;
+  onMove: (direction: -1 | 1) => void;
+  onDelete: () => void;
+  onPreview: () => void;
+}) {
   async function download() {
     const { url } = await api.get<{ url: string }>(`/api/listings/media/${media.id}/download-url`);
     window.open(url, '_blank');
   }
+
   return (
     <div className="media-tile">
       {media.type === 'image' ? (
-        media.viewUrl ? <img src={media.viewUrl} alt={media.original_filename} /> : <div className="empty">Image</div>
+        media.viewUrl ? (
+          <button type="button" className="media-tile__preview" aria-label="Voir en grand" onClick={onPreview}>
+            <img src={media.viewUrl} alt={media.original_filename} />
+          </button>
+        ) : (
+          <div className="empty">Image</div>
+        )
+      ) : media.viewUrl ? (
+        <button type="button" className="media-tile__preview" aria-label="Voir en grand" onClick={onPreview}>
+          <video src={media.viewUrl} muted preload="metadata" />
+        </button>
       ) : (
-        media.viewUrl ? <video src={media.viewUrl} controls /> : <div className="empty">Vidéo</div>
+        <div className="empty">Vidéo</div>
       )}
-      <button type="button" className="media-download" aria-label="Télécharger le média" onClick={() => void download()}>Télécharger</button>
-      <div style={{ fontSize: 10, padding: 4, color: media.status === 'pending' ? 'var(--amber)' : 'var(--text2)' }}>{media.status}</div>
+      <div className="media-order-controls">
+        <button
+          type="button"
+          className="media-order-btn"
+          aria-label="Déplacer vers la gauche"
+          disabled={index === 0}
+          onClick={() => onMove(-1)}
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          className="media-order-btn"
+          aria-label="Déplacer vers la droite"
+          disabled={index === total - 1}
+          onClick={() => onMove(1)}
+        >
+          →
+        </button>
+      </div>
+      {canDelete && (
+        <button
+          type="button"
+          className="media-overlay-btn media-overlay-btn--delete"
+          aria-label="Supprimer le média"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          <Trash2 size={14} strokeWidth={2.25} />
+        </button>
+      )}
+      <button
+        type="button"
+        className="media-overlay-btn media-overlay-btn--download"
+        aria-label="Télécharger le média"
+        onClick={(e) => {
+          e.stopPropagation();
+          void download();
+        }}
+      >
+        <Download size={14} strokeWidth={2.25} />
+      </button>
     </div>
   );
+}
+
+function commentInitials(nom: string) {
+  return nom
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? '')
+    .join('') || '?';
+}
+
+function formatCommentDate(iso: string) {
+  const date = new Date(iso);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.toLocaleDateString('fr-CA', {
+    day: 'numeric',
+    month: 'short',
+    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' as const } : {}),
+  });
 }
 
 function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; userId?: string; isAdmin: boolean }) {
@@ -295,48 +544,107 @@ function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; us
     queryFn: () => api.get<Array<{ id: string; agent_id: string; agent_nom: string; texte: string; created_at: string }>>(`/api/comments/listings/${listingId}/comments`),
   });
   const [text, setText] = useState('');
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  async function removeComment(commentId: string) {
-    if (!confirm('Supprimer ce commentaire ?')) return;
-    await api.delete(`/api/comments/${commentId}`);
-    toast('Commentaire supprimé');
-    void refetch();
+  async function submitComment() {
+    if (!text.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      await api.post(`/api/comments/listings/${listingId}/comments`, { texte: text.trim() });
+      setText('');
+      void refetch();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Envoi impossible';
+      toast(`⚠️ ${message}`);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
+  async function removeComment(commentId: string) {
+    try {
+      await api.delete(`/api/comments/${commentId}`);
+      toast('Commentaire supprimé');
+      void refetch();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Suppression impossible';
+      toast(`⚠️ ${message}`);
+    } finally {
+      setPendingDeleteId(null);
+    }
+  }
+
+  const comments = data ?? [];
+
   return (
-    <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 8 }}>💬 Commentaires</div>
-      {(data ?? []).map((c) => {
-        const canDelete = isAdmin || (userId && c.agent_id === userId);
-        return (
-          <div key={c.id} style={{ background: 'var(--bg3)', borderRadius: 8, padding: 10, marginBottom: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--blue)' }}>{esc(c.agent_nom)}</div>
-              {canDelete && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ padding: '2px 8px', fontSize: 10 }}
-                  aria-label="Supprimer le commentaire"
-                  onClick={() => void removeComment(c.id)}
-                >
-                  Supprimer
-                </button>
-              )}
-            </div>
-            <div>{esc(c.texte)}</div>
-          </div>
-        );
-      })}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Commentaire..." aria-label="Nouveau commentaire" style={{ flex: 1, minHeight: 40 }} />
-        <button type="button" className="btn-secondary" onClick={async () => {
-          if (!text.trim()) return;
-          await api.post(`/api/comments/listings/${listingId}/comments`, { texte: text });
-          setText('');
-          void refetch();
-        }}>Envoyer</button>
+    <section className="listing-comments">
+      <div className="listing-comments__header">
+        <h4 className="listing-comments__title">Commentaires</h4>
+        <span className="listing-comments__count">{comments.length}</span>
       </div>
-    </div>
+
+      {comments.length === 0 ? (
+        <p className="listing-comments__empty">Aucun commentaire pour ce logement.</p>
+      ) : (
+        <ul className="listing-comments__list">
+          {comments.map((c) => {
+            const canDelete = isAdmin || (userId && c.agent_id === userId);
+            return (
+              <li key={c.id} className="listing-comment">
+                <div className="listing-comment__avatar" aria-hidden>{commentInitials(c.agent_nom)}</div>
+                <div className="listing-comment__body">
+                  <div className="listing-comment__meta">
+                    <span className="listing-comment__author">{esc(c.agent_nom)}</span>
+                    <time className="listing-comment__time" dateTime={c.created_at}>{formatCommentDate(c.created_at)}</time>
+                  </div>
+                  <p className="listing-comment__text">{esc(c.texte)}</p>
+                </div>
+                {canDelete && (
+                  <button
+                    type="button"
+                    className="listing-comment__delete"
+                    aria-label="Supprimer le commentaire"
+                    onClick={() => setPendingDeleteId(c.id)}
+                  >
+                    🗑
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="listing-comments__composer">
+        <textarea
+          className="listing-comments__input"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Ajouter un commentaire…"
+          aria-label="Nouveau commentaire"
+          rows={3}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submitComment();
+          }}
+        />
+        <button
+          type="button"
+          className="listing-comments__send"
+          disabled={!text.trim() || submitting}
+          onClick={() => void submitComment()}
+        >
+          {submitting ? 'Envoi…' : 'Envoyer'}
+        </button>
+      </div>
+
+      <ConfirmDialog
+        open={!!pendingDeleteId}
+        message="You are about to delete this comment, are you sure ?"
+        confirmLabel="Delete"
+        onConfirm={() => pendingDeleteId && void removeComment(pendingDeleteId)}
+        onCancel={() => setPendingDeleteId(null)}
+      />
+    </section>
   );
 }

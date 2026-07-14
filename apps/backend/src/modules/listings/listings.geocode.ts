@@ -80,15 +80,24 @@ async function applyGeocodeResult(
   }).eq('id', listingId);
 }
 
-export async function geocodeListing(listingId: string): Promise<'success' | 'cached' | 'skipped' | 'failed'> {
+export async function geocodeListing(
+  listingId: string,
+  force = false,
+): Promise<'success' | 'cached' | 'skipped' | 'failed'> {
   const { data: listing, error } = await supabaseAdmin
     .from('logements')
-    .select('id, adresse, quartier, ville, latitude, longitude')
+    .select('id, adresse, quartier, ville, latitude, longitude, geocoding_status')
     .eq('id', listingId)
     .single();
 
   if (error || !listing) return 'skipped';
-  if (listing.latitude && listing.longitude) return 'skipped';
+  if (
+    !force
+    &&
+    listing.geocoding_status !== 'pending'
+    && listing.latitude != null
+    && listing.longitude != null
+  ) return 'skipped';
 
   const query = buildGeocodeQuery(listing);
   const normalized = normalizeGeocodeAddress(query);
@@ -133,14 +142,17 @@ export type GeocodeBatchResult = {
   estimatedMinutes: number;
 };
 
-/** Geocode all listings missing coordinates, sequentially (Nominatim-safe). */
-export async function geocodeAllPendingListings(): Promise<GeocodeBatchResult> {
-  const { data, error } = await supabaseAdmin
+/** Geocode queued listings sequentially (Nominatim-safe). */
+export async function geocodeAllPendingListings(retryFailed = false): Promise<GeocodeBatchResult> {
+  let query = supabaseAdmin
     .from('logements')
     .select('id')
-    .is('latitude', null)
     .is('deleted_at', null)
     .order('created_at', { ascending: true });
+  query = retryFailed
+    ? query.in('geocoding_status', ['pending', 'failed'])
+    : query.eq('geocoding_status', 'pending');
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -161,7 +173,7 @@ export async function geocodeAllPendingListings(): Promise<GeocodeBatchResult> {
 
   for (let i = 0; i < listings.length; i++) {
     const listing = listings[i]!;
-    const status = await geocodeListing(listing.id);
+    const status = await geocodeListing(listing.id, retryFailed);
     if (status === 'success') result.success++;
     else if (status === 'cached') result.cached++;
     else if (status === 'failed') result.failed++;

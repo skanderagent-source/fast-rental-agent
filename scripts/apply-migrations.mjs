@@ -29,7 +29,7 @@ try {
   console.log('Dry run…');
   run('npx supabase db push --dry-run');
   console.log('Applying migrations…');
-  run('npx supabase db push');
+  run('npx supabase db push --yes');
   console.log('✓ Migrations applied');
 } catch (err) {
   console.error('\nFallback: paste SQL files from supabase/migrations/ into Supabase SQL Editor in order.');

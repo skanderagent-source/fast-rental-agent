@@ -55,7 +55,9 @@ export function buildChangedSheetUpdates(
   updates.sheet_updated_at = new Date().toISOString();
 
   if (ADDRESS_FIELDS.some((field) => field in updates)) {
+    updates.geocoded_at = null;
     updates.geocoding_status = 'pending';
+    updates.geocoding_error = null;
   }
 
   return updates;

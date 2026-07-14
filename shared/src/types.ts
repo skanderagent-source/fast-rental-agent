@@ -60,6 +60,17 @@ export type Listing = {
   pending_media_count?: number;
 };
 
+export type MapListing = Pick<
+  Listing,
+  'id' | 'adresse' | 'quartier' | 'prix' | 'statut' | 'latitude' | 'longitude'
+>;
+
+export type MapListingsResponse = {
+  items: MapListing[];
+  total: number;
+  truncated: boolean;
+};
+
 export type ListingMedia = {
   id: string;
   listing_id: string;
@@ -78,6 +89,7 @@ export type ListingMedia = {
   rejection_reason: string | null;
   upload_completed_at: string | null;
   metadata: Record<string, unknown>;
+  sort_order: number;
   created_at: string;
   approved_at: string | null;
   viewUrl?: string;

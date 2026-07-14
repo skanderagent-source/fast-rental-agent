@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
 import { useToast } from '../../components/common/ToastProvider';
 
@@ -123,6 +123,7 @@ function GeocodingStatus({ status, error }: { status?: string | null; error?: st
 export function AddListingPage() {
   const navigate = useNavigate();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<ListingForm>(emptyForm());
   const [geocodeStatus, setGeocodeStatus] = useState<string | null>(null);
 
@@ -130,6 +131,8 @@ export function AddListingPage() {
     e.preventDefault();
     if (!form.adresse.trim()) return toast('⚠️ Adresse requise');
     const created = await api.post<{ geocoding_status?: string }>('/api/listings', formToPayload(form));
+    void queryClient.invalidateQueries({ queryKey: ['listings'] });
+    void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
     setGeocodeStatus(created.geocoding_status ?? (form.latitude && form.longitude ? 'manual' : 'pending'));
     toast('✅ Logement ajouté');
     setTimeout(() => navigate('/app/search'), 1200);
@@ -151,6 +154,7 @@ export function EditListingPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<ListingForm>(emptyForm());
 
   const { data, isLoading, error } = useQuery({
@@ -167,6 +171,8 @@ export function EditListingPage() {
     e.preventDefault();
     if (!id || !form.adresse.trim()) return toast('⚠️ Adresse requise');
     await api.patch(`/api/listings/${id}`, formToPayload(form));
+    void queryClient.invalidateQueries({ queryKey: ['listings'] });
+    void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
     toast('✅ Logement mis à jour');
     navigate('/app/search');
   }
@@ -174,6 +180,8 @@ export function EditListingPage() {
   async function remove() {
     if (!id || !confirm('Supprimer ce logement ?')) return;
     await api.delete(`/api/listings/${id}`);
+    void queryClient.invalidateQueries({ queryKey: ['listings'] });
+    void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
     toast('Logement supprimé');
     navigate('/app/search');
   }

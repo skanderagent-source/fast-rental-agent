@@ -66,7 +66,7 @@ export async function getAgentStats() {
   return stats;
 }
 
-import { createDownloadUrl } from '../media/r2.service.js';
+import { createDownloadUrl } from '../media/storage.service.js';
 
 export async function getPendingMedia() {
   const { data, error } = await supabaseAdmin

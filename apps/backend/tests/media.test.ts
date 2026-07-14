@@ -19,6 +19,7 @@ vi.mock('../src/modules/media/r2.service.js', () => ({
   createDownloadUrl: vi.fn().mockResolvedValue('https://r2.example/view'),
   deleteObject: vi.fn(),
   objectExists: vi.fn().mockResolvedValue(true),
+  putObject: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { app } from '../src/app.js';
@@ -61,6 +62,7 @@ describe('media API', () => {
       .send({ filename: 'a.jpg', mimeType: 'image/jpeg', sizeBytes: 1000, type: 'image' });
     expect(res.status).toBe(200);
     expect(res.body.data.mediaId).toBe('media-1');
+    expect(res.body.data.uploadMode).toBe('signed');
     expect(mockRpc).toHaveBeenCalledWith('reserve_listing_media_upload', expect.any(Object));
   });
 
@@ -128,11 +130,78 @@ describe('media API', () => {
     expect(res.body.data.status).toBe('approved');
   });
 
-  it('rejects agent approving media', async () => {
-    authAs(mockGetUser, mockFrom, { id: 'agent-1', role: 'agent' });
+  it('allows uploader to delete approved media', async () => {
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: 'agent-1', email: 'agent@test.com' } },
+      error: null,
+    });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'agents') {
+        return mockChain({ data: { id: 'agent-1', actif: true, role: 'agent', nom: 'Agent' }, error: null });
+      }
+      if (table === 'listing_media') {
+        return mockChain({
+          data: {
+            id: 'm1',
+            object_key: 'k1',
+            uploaded_by: 'agent-1',
+            status: 'approved',
+          },
+          error: null,
+        });
+      }
+      return mockChain({ data: [], error: null });
+    });
     const res = await request(app)
-      .post('/api/listings/media/00000000-0000-4000-8000-000000000001/approve')
+      .delete('/api/listings/media/00000000-0000-4000-8000-000000000001')
+      .set('Authorization', 'Bearer t');
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects delete by non-uploader agent', async () => {
+    authAs(mockGetUser, mockFrom, { id: 'agent-2', role: 'agent' });
+    mockFrom.mockImplementation(() => mockChain({
+      data: {
+        id: 'm1',
+        object_key: 'k1',
+        uploaded_by: 'agent-1',
+        status: 'approved',
+      },
+      error: null,
+    }));
+    const res = await request(app)
+      .delete('/api/listings/media/00000000-0000-4000-8000-000000000001')
       .set('Authorization', 'Bearer t');
     expect(res.status).toBe(403);
+  });
+
+  it('reorders listing media for agent', async () => {
+    const listingId = '00000000-0000-4000-8000-000000000001';
+    const mediaRows = [
+      { id: '00000000-0000-4000-8000-000000000011', listing_id: listingId, sort_order: 0, upload_completed_at: '2026-01-01', status: 'approved', object_key: 'k1', original_filename: 'a.jpg', type: 'image' },
+      { id: '00000000-0000-4000-8000-000000000012', listing_id: listingId, sort_order: 1, upload_completed_at: '2026-01-02', status: 'approved', object_key: 'k2', original_filename: 'b.jpg', type: 'image' },
+    ];
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: 'agent-1', email: 'agent@test.com' } },
+      error: null,
+    });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'agents') {
+        return mockChain({ data: { id: 'agent-1', role: 'agent', actif: true, nom: 'Agent' }, error: null });
+      }
+      if (table === 'logements') {
+        return mockChain({ data: { id: listingId, adresse: '123 Rue' }, error: null });
+      }
+      if (table === 'listing_media') {
+        return mockChain({ data: mediaRows, error: null });
+      }
+      return mockChain({ data: [], error: null });
+    });
+
+    const res = await request(app)
+      .put(`/api/listings/${listingId}/media/order`)
+      .set('Authorization', 'Bearer t')
+      .send({ mediaIds: ['00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000011'] });
+    expect(res.status).toBe(200);
   });
 });

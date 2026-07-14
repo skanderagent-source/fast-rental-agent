@@ -7,6 +7,7 @@ import commentsRoutes from '../modules/comments/comments.routes.js';
 import adminRoutes from '../modules/admin/admin.routes.js';
 import rentalsRoutes from '../modules/rentals/rentals.routes.js';
 import publicRoutes from './public.routes.js';
+import storageRoutes from '../modules/media/storage.routes.js';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/comments', commentsRoutes);
 router.use('/admin', adminRoutes);
 router.use('/rentals', rentalsRoutes);
 router.use('/public', publicRoutes);
+router.use('/storage', storageRoutes);
 
 export default router;

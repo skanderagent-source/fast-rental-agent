@@ -51,7 +51,7 @@ router.post('/sheets/sync', requireAuth, requireRole('admin'), asyncHandler(asyn
 }));
 
 router.post('/geocode/run', requireAuth, requireRole('admin'), asyncHandler(async (_req, res) => {
-  void geocodeAllPendingListings()
+  void geocodeAllPendingListings(true)
     .then((result) => logger.info(result, 'Admin-triggered batch geocoding finished'))
     .catch((err) => logger.error({ err }, 'Admin-triggered batch geocoding failed'));
 

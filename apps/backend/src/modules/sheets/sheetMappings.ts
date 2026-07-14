@@ -7,14 +7,15 @@ export const SHEET_SOURCES = {
     headerRow: 2,
     addressHeaderHint: 'address',
   },
-  orcha: {
-    source: 'Orcha',
-    rowIdSource: 'orcha',
-    spreadsheetIdEnv: 'GOOGLE_SHEET_ORCHA_ID' as const,
-    tabName: 'orcha rentals',
-    headerRow: 1,
-    addressHeaderHint: 'eft form',
-  },
+  // Re-enable when GOOGLE_SHEET_ORCHA_ID is configured:
+  // orcha: {
+  //   source: 'Orcha',
+  //   rowIdSource: 'orcha',
+  //   spreadsheetIdEnv: 'GOOGLE_SHEET_ORCHA_ID' as const,
+  //   tabName: 'orcha rentals',
+  //   headerRow: 1,
+  //   addressHeaderHint: 'eft form',
+  // },
 } as const;
 
 export type SheetSourceKey = keyof typeof SHEET_SOURCES;
@@ -28,13 +29,14 @@ export const sheetMappings = {
     headerRow: 2,
     tabName: 'Sheet1',
   },
-  orcha: {
-    source: 'orcha',
-    spreadsheetIdEnv: 'GOOGLE_SHEET_ORCHA_ID',
-    gidEnv: 'GOOGLE_SHEET_ORCHA_GID',
-    headerRow: 1,
-    tabName: 'orcha rentals',
-  },
+  // Re-enable when GOOGLE_SHEET_ORCHA_ID is configured:
+  // orcha: {
+  //   source: 'orcha',
+  //   spreadsheetIdEnv: 'GOOGLE_SHEET_ORCHA_ID',
+  //   gidEnv: 'GOOGLE_SHEET_ORCHA_GID',
+  //   headerRow: 1,
+  //   tabName: 'orcha rentals',
+  // },
 } as const;
 
 export const headerAliases = {
@@ -163,6 +165,13 @@ export type ParsedSheetRow = {
   source: string;
   sheet_row_id: string;
 };
+
+/** Keep the last occurrence, matching the sheet's bottom-most value for duplicate addresses. */
+export function dedupeParsedSheetRows(rows: ParsedSheetRow[]) {
+  const bySheetRowId = new Map<string, ParsedSheetRow>();
+  for (const row of rows) bySheetRowId.set(row.sheet_row_id, row);
+  return [...bySheetRowId.values()];
+}
 
 export function buildColumnIndex(headers: string[]) {
   const col: Record<string, number> = {};

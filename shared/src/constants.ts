@@ -6,10 +6,11 @@ export const MEDIA_STATUSES = ['pending', 'approved', 'rejected'] as const;
 export const MEDIA_TYPES = ['image', 'video'] as const;
 export const LISTING_SOURCES = ['fast_rental', 'orcha', 'Fast Rental', 'Orcha', 'manual', 'sheet'] as const;
 
-export const MAX_IMAGES_PER_LISTING = 20;
-export const MAX_VIDEOS_PER_LISTING = 5;
+export const MAX_IMAGES_PER_LISTING = 10;
+export const MAX_VIDEOS_PER_LISTING = 1;
 export const MAX_IMAGE_SIZE_MB = 15;
 export const MAX_VIDEO_SIZE_MB = 250;
+export const MAX_MAP_LISTINGS = 5000;
 
 export const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const VIDEO_MIME_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'] as const;

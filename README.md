@@ -14,15 +14,27 @@ Monorepo for the LogiGo Agent portal (Fast Rental).
 
 ```bash
 cd "/home/frenki/Documents/Fast Rental"
-nvm use
+npm run start:local
+```
+
+Opens http://localhost:5173/agent-login after checks pass. First time only: fill in `.env` files when prompted, then create admin:
+
+```bash
+INITIAL_ADMIN_EMAIL=you@example.com \
+INITIAL_ADMIN_PASSWORD='YourPassword' \
+INITIAL_ADMIN_NAME='Your Name' \
+npm run create-initial-admin
+```
+
+One-time manual setup (if you prefer):
+
+```bash
 npm install
 cp apps/backend/.env.example apps/backend/.env
 cp apps/frontend/.env.example apps/frontend/.env
-# How to use after sheet import
-npm run geocode
-# Fill Supabase keys in both .env files
+# Fill Supabase, R2, Google keys — see docs/supabase-auth-setup.md
 npm run verify-env
-npm run build
+npx supabase login && npm run db:push
 ```
 
 ## Commands

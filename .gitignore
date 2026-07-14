@@ -8,4 +8,5 @@ build/
 .vscode/
 coverage/
 *.log
+apps/backend/.local-storage/
 backup_before_split.sql

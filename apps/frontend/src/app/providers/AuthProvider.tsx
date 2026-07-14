@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { api } from '../../lib/apiClient';
+import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 
 export type Profile = {
   id: string;
@@ -28,11 +29,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
   const refreshProfile = async () => {
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) {
-      setProfile(null);
-      return;
-    }
     const me = await api.get<{ profile: Profile }>('/api/me');
     setProfile(me.profile);
     if (me.profile.must_change_password) {
@@ -68,13 +64,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     void load();
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      // The explicit load above owns initial hydration. Handling INITIAL_SESSION
+      // again would duplicate /api/me and delay first paint in development.
+      if (event === 'INITIAL_SESSION') return;
       if (!session) {
         setProfile(null);
         setLoading(false);
         return;
       }
-      void refreshProfile().finally(() => setLoading(false));
+      // Supabase runs this callback while holding its auth lock. Defer API work
+      // so apiClient.getSession() cannot contend with that lock.
+      setTimeout(() => {
+        void refreshProfile().finally(() => setLoading(false));
+      }, 0);
     });
     return () => {
       mounted = false;
@@ -97,7 +100,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [loading, profile, navigate],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {loading ? <LoadingSpinner label="Chargement de la session…" /> : children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

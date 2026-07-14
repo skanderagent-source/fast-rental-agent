@@ -2,7 +2,7 @@
   "name": "fast-rental-fullstack",
   "private": true,
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "workspaces": [
     "apps/frontend",
@@ -10,12 +10,13 @@
     "shared"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace apps/backend & npm run dev --workspace apps/frontend",
-    "dev:frontend": "npm run dev --workspace apps/frontend",
-    "dev:backend": "npm run dev --workspace apps/backend",
-    "build": "npm run build --workspace @fast-rental/shared && npm run build --workspace @fast-rental/backend && npm run build --workspace @fast-rental/frontend",
-    "lint": "npm run lint --workspace @fast-rental/shared && npm run lint --workspace @fast-rental/backend && npm run lint --workspace @fast-rental/frontend",
-    "test": "npm run test --workspace @fast-rental/backend",
+    "dev": "bash scripts/with-node.sh npm run dev --workspace apps/backend & bash scripts/with-node.sh npm run dev --workspace apps/frontend",
+    "dev:frontend": "bash scripts/with-node.sh npm run dev --workspace apps/frontend",
+    "dev:backend": "bash scripts/with-node.sh npm run dev --workspace apps/backend",
+    "start:local": "bash scripts/start-local.sh",
+    "build": "bash scripts/with-node.sh npm run build --workspace @fast-rental/shared && bash scripts/with-node.sh npm run build --workspace @fast-rental/backend && bash scripts/with-node.sh npm run build --workspace @fast-rental/frontend",
+    "lint": "bash scripts/with-node.sh npm run lint --workspace @fast-rental/shared && bash scripts/with-node.sh npm run lint --workspace @fast-rental/backend && bash scripts/with-node.sh npm run lint --workspace @fast-rental/frontend",
+    "test": "bash scripts/with-node.sh npm run test --workspace @fast-rental/backend",
     "supabase": "supabase",
     "verify-env": "node scripts/verify-env.mjs",
     "verify-plan": "node scripts/verify-plan-complete.mjs",
@@ -23,6 +24,7 @@
     "verify-supabase-auth": "node scripts/verify-supabase-auth.mjs",
     "verify-migrations": "node scripts/verify-migrations.mjs",
     "verify-r2": "node scripts/verify-r2.mjs",
+    "configure-r2-cors": "node scripts/configure-r2-cors.mjs",
     "verify-email": "node scripts/verify-email.mjs",
     "verify-cutover": "node scripts/verify-cutover.mjs",
     "verify-dns": "node scripts/verify-dns.mjs",
@@ -33,7 +35,7 @@
     "geocode": "npm run geocode --workspace @fast-rental/backend",
     "db:push": "node scripts/apply-migrations.mjs",
     "cutover": "node scripts/apply-cutover.mjs",
-    "smoke": "bash scripts/smoke-local.sh",
+    "smoke": "bash scripts/with-node.sh bash scripts/smoke-local.sh",
     "deploy:vercel": "bash scripts/deploy-vercel.sh",
     "deploy:vps": "bash scripts/deploy-vps.sh"
   },

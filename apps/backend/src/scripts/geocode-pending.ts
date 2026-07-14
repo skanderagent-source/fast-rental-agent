@@ -1,6 +1,6 @@
 import { geocodeAllPendingListings } from '../modules/listings/listings.geocode.js';
 
-const result = await geocodeAllPendingListings();
+const result = await geocodeAllPendingListings(true);
 
 console.log('\n===== TERMINÉ =====');
 console.log(`Total: ${result.total}`);

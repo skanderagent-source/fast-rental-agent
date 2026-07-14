@@ -59,25 +59,78 @@ export function LoginPage() {
   }
 
   return (
-    <div className="login-screen" style={{ minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <form className="login-box" style={{ width: '100%', maxWidth: 380 }} onSubmit={onSubmit}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 24, fontWeight: 800 }}>LogiGo Agent</div>
-          <div style={{ fontSize: 14, color: 'var(--text2)' }}>Espace agent — Connexion</div>
-        </div>
+    <div className="login-page">
+      <div className="login-page__glow login-page__glow--left" aria-hidden />
+      <div className="login-page__glow login-page__glow--right" aria-hidden />
+
+      <div className="login-card">
+        <header className="login-card__header">
+          <img src="/logo.png" alt="" className="login-card__logo" width={56} height={56} />
+          <h1 className="login-card__title">LogiGo Agent</h1>
+          <p className="login-card__subtitle">Portail agents — Fast Rental</p>
+        </header>
+
         {sessionExpired && (
-          <div style={{ background: 'var(--yellow-bg, #fef3c7)', color: 'var(--text)', padding: 10, borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
+          <div className="login-alert login-alert--warning" role="status">
             Ta session a expiré. Reconnecte-toi pour continuer.
           </div>
         )}
-        {error && <div style={{ background: 'var(--red-bg)', color: 'var(--red)', padding: 10, borderRadius: 8, marginBottom: 16, fontSize: 13 }}>{error}</div>}
-        <label style={{ fontSize: 12, color: 'var(--text2)', display: 'block', marginBottom: 6 }}>Email</label>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-        <label style={{ fontSize: 12, color: 'var(--text2)', display: 'block', margin: '14px 0 6px' }}>Mot de passe</label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-        <button className="login-btn" type="submit" disabled={loading} style={{ marginTop: 8 }}>{loading ? 'Connexion...' : 'Se connecter'}</button>
-        <button type="button" onClick={() => void forgotPassword()} style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 13, marginTop: 16, cursor: 'pointer', width: '100%' }}>Mot de passe oublié ?</button>
-      </form>
+        {error && (
+          <div className="login-alert login-alert--error" role="alert">
+            {error}
+          </div>
+        )}
+
+        <form className="login-form" onSubmit={onSubmit}>
+          <div className="login-field">
+            <label htmlFor="login-email">Email</label>
+            <input
+              id="login-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              placeholder="agent@example.com"
+              disabled={loading}
+            />
+          </div>
+
+          <div className="login-field">
+            <label htmlFor="login-password">Mot de passe</label>
+            <input
+              id="login-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              placeholder="••••••••"
+              disabled={loading}
+            />
+          </div>
+
+          <button className="login-submit" type="submit" disabled={loading}>
+            {loading ? (
+              <span className="login-submit__loading">
+                <span className="login-spinner" aria-hidden />
+                Connexion…
+              </span>
+            ) : (
+              'Se connecter'
+            )}
+          </button>
+
+          <button
+            type="button"
+            className="login-forgot"
+            onClick={() => void forgotPassword()}
+            disabled={loading}
+          >
+            Mot de passe oublié ?
+          </button>
+        </form>
+      </div>
+
+      <p className="login-footer">Réservé aux agents autorisés</p>
     </div>
   );
 }

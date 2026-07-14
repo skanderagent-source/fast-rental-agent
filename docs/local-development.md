@@ -1,6 +1,6 @@
 # Local Development (Phase 20)
 
-1. Install Node 22+ (`nvm use`).
+1. Install Node 22+ (project uses `.nvmrc`; `npm run dev` auto-activates it when nvm is installed).
 2. Copy `.env.example` to `.env` in `apps/backend` and `apps/frontend`.
 3. Configure Supabase, R2, Google Sheets, and Resend per [supabase-auth-setup.md](./supabase-auth-setup.md) and [r2-setup.md](./r2-setup.md).
 4. Run `npm run verify-env`.

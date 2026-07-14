@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
 import { useToast } from '../../components/common/ToastProvider';
 
 export function AdminPanel() {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const { data: stats, refetch: refetchStats } = useQuery({ queryKey: ['admin-stats'], queryFn: () => api.get<Record<string, number>>('/api/admin/stats') });
   const { data: agents, refetch: refetchAgents } = useQuery({ queryKey: ['admin-agents'], queryFn: () => api.get<Array<Record<string, unknown>>>('/api/admin/agents/stats') });
   const { data: users, refetch: refetchUsers } = useQuery({ queryKey: ['admin-users'], queryFn: () => api.get<Array<{ id: string; nom: string; email: string; role: string; actif: boolean }>>('/api/users') });
-  const { data: pending, refetch: refetchPending } = useQuery({ queryKey: ['pending-media'], queryFn: () => api.get<Array<{ id: string; original_filename: string; type: string; viewUrl?: string; logements?: { adresse: string } }>>('/api/admin/media/pending') });
   const { data: activity } = useQuery({ queryKey: ['activity'], queryFn: () => api.get<Array<{ agent_nom: string; details: string; created_at: string }>>('/api/admin/activity') });
   const { data: sheetRuns, refetch: refetchSheets } = useQuery({ queryKey: ['sheet-runs'], queryFn: () => api.get<Array<Record<string, unknown>>>('/api/admin/sheets/runs') });
 
@@ -21,7 +21,6 @@ export function AdminPanel() {
         <StatCard label="Logements" value={stats?.totalListings ?? 0} />
         <StatCard label="Disponibles" value={stats?.availableListings ?? 0} />
         <StatCard label="Demandes" value={stats?.totalLeads ?? 0} />
-        <StatCard label="Médias en attente" value={stats?.pendingMedia ?? 0} />
       </div>
 
       <h2>Créer un compte</h2>
@@ -93,30 +92,6 @@ export function AdminPanel() {
         ))}
       </div>
 
-      <h2>Médias à approuver</h2>
-      <div style={{ marginBottom: 24 }}>
-        {(pending ?? []).map((m) => (
-          <div key={m.id} style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 8, marginBottom: 8 }}>
-            <div style={{ display: 'flex', gap: 12 }}>
-              {m.viewUrl && m.type === 'image' && (
-                <img src={m.viewUrl} alt={m.original_filename} style={{ width: 80, height: 60, objectFit: 'cover', borderRadius: 6 }} />
-              )}
-              {m.viewUrl && m.type === 'video' && (
-                <video src={m.viewUrl} style={{ width: 80, height: 60, borderRadius: 6 }} muted />
-              )}
-              <div style={{ flex: 1 }}>
-                <div>{m.original_filename}</div>
-                <div style={{ fontSize: 12, color: 'var(--text2)' }}>{m.logements?.adresse}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button className="btn-secondary" onClick={async () => { await api.post(`/api/listings/media/${m.id}/approve`); toast('✅ Approuvé'); void refetchPending(); void refetchStats(); }}>Approuver</button>
-              <button className="btn-secondary" onClick={async () => { await api.post(`/api/listings/media/${m.id}/reject`, { reason: 'Non conforme' }); toast('Refusé'); void refetchPending(); }}>Refuser</button>
-            </div>
-          </div>
-        ))}
-      </div>
-
       <h2>Email</h2>
       <button className="btn-secondary" style={{ marginBottom: 24 }} onClick={async () => {
         await api.post('/api/admin/email/test');
@@ -150,6 +125,7 @@ export function AdminPanel() {
           toast(`✅ Import: ${result.rowsInserted} insérés, ${result.rowsUpdated} mis à jour`);
           void refetchSheets();
           void refetchStats();
+          void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
         }}>Importer depuis Sheets</button>
         <button className="btn-secondary" onClick={async () => {
           if (!confirm('Sync avec protection des champs modifiés manuellement dans l\'app ?')) return;
@@ -157,6 +133,7 @@ export function AdminPanel() {
           toast('✅ Sync terminée');
           void refetchSheets();
           void refetchStats();
+          void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
         }}>Sync (respecte overrides)</button>
       </div>
       {(sheetRuns ?? []).slice(0, 5).map((run) => (

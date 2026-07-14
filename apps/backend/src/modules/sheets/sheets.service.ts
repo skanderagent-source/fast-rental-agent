@@ -46,6 +46,24 @@ function summarizeRows(rows: ParsedSheetRow[]) {
   return { bySource, byStatut };
 }
 
+async function loadExistingListings(rows: ParsedSheetRow[]) {
+  const bySheetRowId = new Map<string, Record<string, unknown>>();
+  const sheetRowIds = rows.map((row) => row.sheet_row_id);
+
+  for (let i = 0; i < sheetRowIds.length; i += BATCH_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from('logements')
+      .select('*')
+      .in('sheet_row_id', sheetRowIds.slice(i, i + BATCH_SIZE));
+    if (error) throw error;
+    for (const listing of data ?? []) {
+      bySheetRowId.set(String(listing.sheet_row_id), listing as Record<string, unknown>);
+    }
+  }
+
+  return bySheetRowId;
+}
+
 export async function previewSheetImport() {
   const { rows, stats } = await collectAllSheetRows();
   return {
@@ -56,13 +74,12 @@ export async function previewSheetImport() {
   };
 }
 
-async function upsertRow(row: ParsedSheetRow, mode: 'import' | 'sync'): Promise<UpsertResult> {
+async function upsertRow(
+  row: ParsedSheetRow,
+  mode: 'import' | 'sync',
+  existing: Record<string, unknown> | undefined,
+): Promise<UpsertResult> {
   const payload = rowToPayload(row);
-  const { data: existing } = await supabaseAdmin
-    .from('logements')
-    .select('*')
-    .eq('sheet_row_id', row.sheet_row_id)
-    .maybeSingle();
 
   if (existing) {
     const overrides = mode === 'sync'
@@ -71,7 +88,7 @@ async function upsertRow(row: ParsedSheetRow, mode: 'import' | 'sync'): Promise<
 
     const updates = buildChangedSheetUpdates(existing, payload, overrides);
     if (!updates) {
-      return { action: 'skipped', id: existing.id };
+      return { action: 'skipped', id: String(existing.id) };
     }
 
     const { data, error } = await supabaseAdmin
@@ -83,7 +100,7 @@ async function upsertRow(row: ParsedSheetRow, mode: 'import' | 'sync'): Promise<
     if (error) throw error;
     return {
       action: 'updated',
-      id: data.id,
+      id: String(data.id),
       addressChanged: hasAddressFieldChange(updates),
     };
   }
@@ -131,12 +148,17 @@ async function runSheetJob(
   try {
     const { rows, stats } = await collectAllSheetRows();
     rowsSeen = rows.length;
+    const existingBySheetRowId = await loadExistingListings(rows);
 
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const batch = rows.slice(i, i + BATCH_SIZE);
       for (const row of batch) {
         try {
-          const result = await upsertRow(row, mode);
+          const result = await upsertRow(
+            row,
+            mode,
+            existingBySheetRowId.get(row.sheet_row_id),
+          );
           if (result.action === 'inserted') {
             rowsInserted++;
             needsGeocode = true;

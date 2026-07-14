@@ -31,7 +31,8 @@ const backendRequired = [
   'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY',
   'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET',
   'R2_SIGNED_UPLOAD_EXPIRES_SECONDS', 'R2_SIGNED_DOWNLOAD_EXPIRES_SECONDS',
-  'GOOGLE_SHEET_FAST_RENTAL_ID', 'GOOGLE_SHEET_ORCHA_ID', 'GOOGLE_SHEET_ORCHA_GID',
+  'GOOGLE_SHEET_FAST_RENTAL_ID',
+  // 'GOOGLE_SHEET_ORCHA_ID', 'GOOGLE_SHEET_ORCHA_GID',
   'EMAIL_ENABLED', 'GEOCODING_USER_AGENT', 'GEOCODING_BASE_URL',
   'CRON_SHEET_SYNC', 'CRON_ARCHIVE_DELETE', 'CRON_STALE_MEDIA_CLEANUP',
   'RATE_LIMIT_PUBLIC_WINDOW_MS', 'RATE_LIMIT_PUBLIC_MAX',
@@ -66,10 +67,16 @@ if (frontendEnv) {
   }
 }
 
+function isTrackedSecretEnv(filePath) {
+  const name = path.basename(filePath);
+  if (name.endsWith('.example')) return false;
+  return name === '.env' || name.startsWith('.env.');
+}
+
 try {
   const tracked = execSync('git ls-files', { encoding: 'utf8' });
   for (const line of tracked.split('\n')) {
-    if (line.endsWith('.env') || line.includes('.env.')) {
+    if (line && isTrackedSecretEnv(line)) {
       errors.push(`.env file is tracked by git: ${line}`);
     }
   }

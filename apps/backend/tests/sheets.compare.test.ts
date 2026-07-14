@@ -49,7 +49,13 @@ describe('sheet change detection', () => {
   it('marks geocoding pending when address fields change', () => {
     const existing = { ...basePayload, adresse: '999 Autre Rue' };
     const updates = buildChangedSheetUpdates(existing, basePayload);
-    expect(updates?.geocoding_status).toBe('pending');
+    expect(updates).toMatchObject({
+      geocoded_at: null,
+      geocoding_status: 'pending',
+      geocoding_error: null,
+    });
+    expect(updates).not.toHaveProperty('latitude');
+    expect(updates).not.toHaveProperty('longitude');
     expect(hasAddressFieldChange(updates!)).toBe(true);
   });
 

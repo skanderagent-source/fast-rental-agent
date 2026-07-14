@@ -26,4 +26,4 @@ const testKey = `_verify/${Date.now()}.txt`;
 await client.send(new PutObjectCommand({ Bucket: R2_BUCKET, Key: testKey, Body: 'ok' }));
 await client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: testKey }));
 console.log('✓ Put/delete test object succeeded');
-console.log('Apply CORS from deploy/r2-cors.json in Cloudflare dashboard');
+console.log('Apply CORS: npm run configure-r2-cors');

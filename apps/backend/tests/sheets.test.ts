@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildSheetRowId,
+  dedupeParsedSheetRows,
   mapFastRentalRow,
   mapOrchaRow,
   mapSheetStatut,
@@ -64,5 +65,15 @@ describe('sheet mappings', () => {
   it('detects known cities in area', () => {
     expect(splitQuartierVille('Parc Laval').ville).toMatch(/Laval/i);
     expect(splitQuartierVille('Plateau').ville).toBe('Montréal');
+  });
+
+  it('keeps the bottom-most duplicate sheet row', () => {
+    const first = mapFastRentalRow(
+      (name) => ({ address: '123 Rue Test', price: '1000' }[name] ?? ''),
+      'Fast Rental',
+    )!;
+    const last = { ...first, prix: 1250 };
+
+    expect(dedupeParsedSheetRows([first, last])).toEqual([last]);
   });
 });
