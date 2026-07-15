@@ -3,8 +3,7 @@ import { Download, Trash2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/apiClient';
-import { env } from '../../lib/env';
-import { esc, statusLabel } from '../../lib/format';
+import { esc, formatEventDate, statusLabel } from '../../lib/format';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { useToast } from '../../components/common/ToastProvider';
 import { ApplicationMessageModal } from '../../components/listings/ApplicationMessageModal';
@@ -12,8 +11,14 @@ import { FacebookAdModal } from '../../components/listings/FacebookAdModal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { MediaLightbox } from '../../components/common/MediaLightbox';
 import type { Listing, ListingMedia } from '@fast-rental/shared';
-import { MAX_IMAGES_PER_LISTING, MAX_VIDEOS_PER_LISTING, MAX_VIDEO_DURATION_SECONDS } from '@fast-rental/shared';
+import {
+  MAX_IMAGES_PER_LISTING,
+  MAX_VIDEOS_PER_LISTING,
+  MAX_VIDEO_DURATION_DISPLAY_SECONDS,
+  MAX_VIDEO_DURATION_SECONDS,
+} from '@fast-rental/shared';
 import { readVideoDurationSeconds } from '../../lib/media';
+import { buildListingReferralUrl, copyTextToClipboard } from '../../lib/referral';
 
 type ListingsResponse = {
   items: Listing[];
@@ -186,21 +191,30 @@ function Stat({ num, label, color }: { num: number | string; label: string; colo
 
 function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenAction, onOpenFb }: {
   listing: Listing; open: boolean; onToggle: () => void; toast: (m: string) => void;
-  profile: { id: string; nom: string } | null; isAdmin: boolean;
+  profile: { id: string; nom: string; email: string; referral_slug: string } | null; isAdmin: boolean;
   onOpenAction: (prefix: 'En application' | 'Request of approval') => void;
   onOpenFb: () => void;
 }) {
+  const { refreshProfile } = useAuth();
   const { data: detail, refetch: refetchDetail } = useQuery({
     queryKey: ['listing', listing.id],
     queryFn: () => api.get<{ listing: Listing; media: ListingMedia[] }>(`/api/listings/${listing.id}`),
     enabled: open,
   });
 
-  function copyReferral() {
-    if (!profile) return;
-    const url = `${env.VITE_PUBLIC_SITE_URL}/?listing=${listing.id}&ref=${profile.id}`;
-    void navigator.clipboard.writeText(url);
-    toast("Lien copié. L'admin verra cet agent comme suggestion.");
+  async function copyReferral() {
+    try {
+      const latest = await refreshProfile();
+      const url = buildListingReferralUrl(latest, listing.id);
+      if (!url) {
+        toast('❌ Impossible de générer le lien — contactez un admin pour définir votre nom d\'utilisateur.');
+        return;
+      }
+      await copyTextToClipboard(url);
+      toast("Lien copié. L'admin verra cet agent comme suggestion.");
+    } catch {
+      toast('❌ Impossible de copier le lien.');
+    }
   }
 
   const queryClient = useQueryClient();
@@ -269,7 +283,7 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
         return false;
       }
       if (durationSeconds > MAX_VIDEO_DURATION_SECONDS) {
-        toast(`⚠️ Vidéo trop longue (max ${MAX_VIDEO_DURATION_SECONDS} secondes)`);
+        toast(`⚠️ Vidéo trop longue (max ${MAX_VIDEO_DURATION_DISPLAY_SECONDS} secondes)`);
         return false;
       }
     }
@@ -440,8 +454,8 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
             <button type="button" className="btn-secondary" onClick={() => onOpenAction('En application')}>📲 En application</button>
             <button type="button" className="btn-secondary" onClick={() => onOpenAction('Request of approval')}>📧 Request of Approval</button>
-            <button type="button" className="btn-secondary" style={{ gridColumn: '1 / -1' }} onClick={onOpenFb}>📢 Générer annonce Facebook</button>
-            <button type="button" className="btn-secondary" style={{ gridColumn: '1 / -1' }} onClick={copyReferral}>🔗 Copier mon lien</button>
+            <button type="button" className="btn-secondary" onClick={onOpenFb}>📢 Générer annonce Facebook</button>
+            <button type="button" className="btn-secondary" onClick={copyReferral}>🔗 Copier mon lien</button>
             {isAdmin && (
               <Link to={`/app/admin/listings/${listing.id}/edit`} className="btn-secondary" style={{ gridColumn: '1 / -1', textAlign: 'center', textDecoration: 'none' }}>
                 ✏️ Modifier le logement
@@ -452,18 +466,20 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
               <input hidden type="file" accept="image/*" multiple onChange={(e) => { void pickMedia('image', e.target.files); e.target.value = ''; }} />
             </label>
             <label className="btn-secondary" style={{ textAlign: 'center' }}>
-              🎬 Vidéo (max {MAX_VIDEOS_PER_LISTING}, {MAX_VIDEO_DURATION_SECONDS} s)
+              🎬 Vidéo (max {MAX_VIDEOS_PER_LISTING}, {MAX_VIDEO_DURATION_DISPLAY_SECONDS} secondes)
               <input hidden type="file" accept="video/*" onChange={(e) => { void pickMedia('video', e.target.files); e.target.value = ''; }} />
             </label>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 8, marginTop: 12 }}>
-            {(detail?.media ?? []).filter((m) => m.upload_completed_at).map((m, index, media) => (
+            {(detail?.media ?? []).filter((m) => m.upload_completed_at).map((m, index, media) => {
+              const canManage = isAdmin || m.uploaded_by === profile?.id;
+              return (
               <MediaTile
                 key={m.id}
                 media={m}
                 index={index}
                 total={media.length}
-                canDelete={isAdmin || m.uploaded_by === profile?.id}
+                canManage={canManage}
                 onMove={(direction) => void moveMedia(index, direction)}
                 onDelete={() => startDelete(m)}
                 onPreview={() => {
@@ -471,7 +487,8 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
                   else toast('Aperçu indisponible');
                 }}
               />
-            ))}
+            );
+            })}
           </div>
           <CommentsSection listingId={listing.id} userId={profile?.id} isAdmin={isAdmin} />
         </div>
@@ -512,7 +529,7 @@ function MediaTile({
   media,
   index,
   total,
-  canDelete,
+  canManage,
   onMove,
   onDelete,
   onPreview,
@@ -520,7 +537,7 @@ function MediaTile({
   media: ListingMedia;
   index: number;
   total: number;
-  canDelete: boolean;
+  canManage: boolean;
   onMove: (direction: -1 | 1) => void;
   onDelete: () => void;
   onPreview: () => void;
@@ -532,65 +549,69 @@ function MediaTile({
 
   return (
     <div className="media-tile">
-      {media.type === 'image' ? (
-        media.viewUrl ? (
+      <div className="media-tile__media">
+        {media.type === 'image' ? (
+          media.viewUrl ? (
+            <button type="button" className="media-tile__preview" aria-label="Voir en grand" onClick={onPreview}>
+              <img src={media.viewUrl} alt={media.original_filename} />
+            </button>
+          ) : (
+            <div className="empty">Image</div>
+          )
+        ) : media.viewUrl ? (
           <button type="button" className="media-tile__preview" aria-label="Voir en grand" onClick={onPreview}>
-            <img src={media.viewUrl} alt={media.original_filename} />
+            <video src={media.viewUrl} muted preload="metadata" />
           </button>
         ) : (
-          <div className="empty">Image</div>
-        )
-      ) : media.viewUrl ? (
-        <button type="button" className="media-tile__preview" aria-label="Voir en grand" onClick={onPreview}>
-          <video src={media.viewUrl} muted preload="metadata" />
-        </button>
-      ) : (
-        <div className="empty">Vidéo</div>
-      )}
-      <div className="media-order-controls">
+          <div className="empty">Vidéo</div>
+        )}
+        {canManage && (
+          <button
+            type="button"
+            className="media-overlay-btn media-overlay-btn--delete"
+            aria-label="Supprimer le média"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 size={14} strokeWidth={2.25} />
+          </button>
+        )}
         <button
           type="button"
-          className="media-order-btn"
-          aria-label="Déplacer vers la gauche"
-          disabled={index === 0}
-          onClick={() => onMove(-1)}
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          className="media-order-btn"
-          aria-label="Déplacer vers la droite"
-          disabled={index === total - 1}
-          onClick={() => onMove(1)}
-        >
-          →
-        </button>
-      </div>
-      {canDelete && (
-        <button
-          type="button"
-          className="media-overlay-btn media-overlay-btn--delete"
-          aria-label="Supprimer le média"
+          className="media-overlay-btn media-overlay-btn--download"
+          aria-label="Télécharger le média"
           onClick={(e) => {
             e.stopPropagation();
-            onDelete();
+            void download();
           }}
         >
-          <Trash2 size={14} strokeWidth={2.25} />
+          <Download size={14} strokeWidth={2.25} />
         </button>
+      </div>
+      {canManage && (
+        <div className="media-order-controls">
+          <button
+            type="button"
+            className="media-order-btn"
+            aria-label="Déplacer vers la gauche"
+            disabled={index === 0}
+            onClick={() => onMove(-1)}
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            className="media-order-btn"
+            aria-label="Déplacer vers la droite"
+            disabled={index === total - 1}
+            onClick={() => onMove(1)}
+          >
+            →
+          </button>
+        </div>
       )}
-      <button
-        type="button"
-        className="media-overlay-btn media-overlay-btn--download"
-        aria-label="Télécharger le média"
-        onClick={(e) => {
-          e.stopPropagation();
-          void download();
-        }}
-      >
-        <Download size={14} strokeWidth={2.25} />
-      </button>
     </div>
   );
 }
@@ -604,19 +625,6 @@ function commentInitials(nom: string) {
     .join('') || '?';
 }
 
-function formatCommentDate(iso: string) {
-  const date = new Date(iso);
-  const now = new Date();
-  if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' });
-  }
-  return date.toLocaleDateString('fr-CA', {
-    day: 'numeric',
-    month: 'short',
-    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' as const } : {}),
-  });
-}
-
 function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; userId?: string; isAdmin: boolean }) {
   const toast = useToast();
   const { data, refetch } = useQuery({
@@ -625,7 +633,18 @@ function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; us
   });
   const [text, setText] = useState('');
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
   const [submitting, setSubmitting] = useState(false);
+
+  function startDeleteComment(commentId: string) {
+    setPendingDeleteId(commentId);
+    setDeleteStep(1);
+  }
+
+  function cancelDeleteComment() {
+    setPendingDeleteId(null);
+    setDeleteStep(0);
+  }
 
   async function submitComment() {
     if (!text.trim() || submitting) return;
@@ -651,7 +670,7 @@ function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; us
       const message = err instanceof ApiError ? err.message : 'Suppression impossible';
       toast(`⚠️ ${message}`);
     } finally {
-      setPendingDeleteId(null);
+      cancelDeleteComment();
     }
   }
 
@@ -676,7 +695,7 @@ function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; us
                 <div className="listing-comment__body">
                   <div className="listing-comment__meta">
                     <span className="listing-comment__author">{esc(c.agent_nom)}</span>
-                    <time className="listing-comment__time" dateTime={c.created_at}>{formatCommentDate(c.created_at)}</time>
+                    <time className="listing-comment__time" dateTime={c.created_at}>{formatEventDate(c.created_at)}</time>
                   </div>
                   <p className="listing-comment__text">{esc(c.texte)}</p>
                 </div>
@@ -685,9 +704,9 @@ function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; us
                     type="button"
                     className="listing-comment__delete"
                     aria-label="Supprimer le commentaire"
-                    onClick={() => setPendingDeleteId(c.id)}
+                    onClick={() => startDeleteComment(c.id)}
                   >
-                    🗑
+                    <Trash2 size={14} strokeWidth={2.25} />
                   </button>
                 )}
               </li>
@@ -719,11 +738,21 @@ function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; us
       </div>
 
       <ConfirmDialog
-        open={!!pendingDeleteId}
-        message="You are about to delete this comment, are you sure ?"
-        confirmLabel="Delete"
+        open={deleteStep === 1}
+        message="Vous allez effacer ce message, êtes-vous sûr ?"
+        confirmLabel="Continuer"
+        cancelLabel="Annuler"
+        confirmTone="primary"
+        onConfirm={() => setDeleteStep(2)}
+        onCancel={cancelDeleteComment}
+      />
+      <ConfirmDialog
+        open={deleteStep === 2}
+        message="Effacer ce message ?"
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
         onConfirm={() => pendingDeleteId && void removeComment(pendingDeleteId)}
-        onCancel={() => setPendingDeleteId(null)}
+        onCancel={cancelDeleteComment}
       />
     </section>
   );

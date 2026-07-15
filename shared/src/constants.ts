@@ -13,12 +13,51 @@ export const LISTING_SOURCES = ['fast_rental', 'orcha', 'Fast Rental', 'Orcha', 
 export const MAX_IMAGES_PER_LISTING = 10;
 export const MAX_VIDEOS_PER_LISTING = 1;
 export const MAX_VIDEO_DURATION_SECONDS = 62;
+/** Shown to admins/agents; actual limit is {@link MAX_VIDEO_DURATION_SECONDS} for metadata headroom. */
+export const MAX_VIDEO_DURATION_DISPLAY_SECONDS = 60;
 export const MAX_IMAGE_SIZE_MB = 15;
 export const MAX_VIDEO_SIZE_MB = 250;
 export const MAX_MAP_LISTINGS = 5000;
 
 export const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const VIDEO_MIME_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'] as const;
+
+export const REFERRAL_USERNAME_MIN_LENGTH = 3;
+export const REFERRAL_USERNAME_MAX_LENGTH = 32;
+export const REFERRAL_USERNAME_PATTERN = /^[a-z0-9]+$/;
+
+export function normalizeReferralUsername(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/** Strip dots and other symbols — used when deriving a default from email. */
+export function sanitizeReferralUsername(value: string): string {
+  return normalizeReferralUsername(value).replace(/[^a-z0-9]/g, '');
+}
+
+export function isValidReferralUsername(value: string): boolean {
+  const normalized = normalizeReferralUsername(value);
+  return (
+    normalized.length >= REFERRAL_USERNAME_MIN_LENGTH &&
+    normalized.length <= REFERRAL_USERNAME_MAX_LENGTH &&
+    REFERRAL_USERNAME_PATTERN.test(normalized)
+  );
+}
+
+export function referralSlugFromEmail(email: string): string {
+  const sanitized = sanitizeReferralUsername(email.split('@')[0] ?? '');
+  if (isValidReferralUsername(sanitized)) return sanitized;
+  if (sanitized.length > REFERRAL_USERNAME_MAX_LENGTH) {
+    return sanitized.slice(0, REFERRAL_USERNAME_MAX_LENGTH);
+  }
+  return 'agent';
+}
+
+/** Referral URL segment from agents.nom (e.g. profile display name "frepoc"). */
+export function referralUsernameFromNom(nom: string | null | undefined): string | null {
+  const username = sanitizeReferralUsername(nom ?? '');
+  return isValidReferralUsername(username) ? username : null;
+}
 
 export const QUARTIER_COORDS: Record<string, [number, number]> = {
   rosemont: [45.540, -73.580],
@@ -121,6 +160,5 @@ export function buildFacebookAd(listing: {
   lines.push('   ✔️ Vérification de crédit obligatoire (SingleKey)');
   lines.push('');
   lines.push("💬 Envoyez-moi un message pour plus d'informations.");
-  lines.push('⚠️ Adresse communiquée après vérification seulement.');
   return lines.join('\n');
 }

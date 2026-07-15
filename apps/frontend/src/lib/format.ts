@@ -10,6 +10,17 @@ export function formatPrice(value: number | null | undefined) {
   return `${Number(value).toLocaleString('fr-CA')} $/mois`;
 }
 
+/** e.g. MER. (15)/07/26 - 20:55 */
+export function formatEventDate(iso: string) {
+  const date = new Date(iso);
+  const weekday = date.toLocaleDateString('fr-FR', { weekday: 'short' }).toUpperCase();
+  const day = date.getDate();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(-2);
+  const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  return `${weekday} (${day})/${month}/${year} - ${time}`;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   Available: 'Dispo',
   'On Hold': 'Attente',

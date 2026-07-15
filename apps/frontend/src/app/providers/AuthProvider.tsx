@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { api } from '../../lib/apiClient';
@@ -12,13 +12,14 @@ export type Profile = {
   role: 'admin' | 'agent';
   actif: boolean;
   must_change_password: boolean;
+  referral_slug: string;
 };
 
 type AuthContextValue = {
   loading: boolean;
   profile: Profile | null;
   isAdmin: boolean;
-  refreshProfile: () => Promise<void>;
+  refreshProfile: () => Promise<Profile>;
   signOut: () => Promise<void>;
 };
 
@@ -29,13 +30,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const navigate = useNavigate();
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async (): Promise<Profile> => {
     const me = await api.get<{ profile: Profile }>('/api/me');
     setProfile(me.profile);
     if (me.profile.must_change_password) {
       navigate('/auth/force-password-change', { replace: true });
     }
-  };
+    return me.profile;
+  }, [navigate]);
 
   useEffect(() => {
     let mounted = true;
@@ -84,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
       sub.subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, [navigate, refreshProfile]);
 
   const value = useMemo(
     () => ({
@@ -98,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         navigate('/agent-login', { replace: true });
       },
     }),
-    [loading, profile, navigate],
+    [loading, profile, navigate, refreshProfile],
   );
 
   return (

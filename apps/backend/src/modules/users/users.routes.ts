@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createUserSchema, updateUserSchema } from '@fast-rental/shared';
+import { createUserSchema, updateUserReferralSlugSchema, updateUserSchema } from '@fast-rental/shared';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { validateRequest } from '../../middleware/validateRequest.js';
@@ -12,6 +12,7 @@ import {
   listUsers,
   reactivateUser,
   updateUser,
+  updateUserReferralSlug,
 } from './users.service.js';
 
 const router = Router();
@@ -29,6 +30,12 @@ router.post('/', requireAuth, requireRole('admin'), validateRequest(createUserSc
 
 router.patch('/:id', requireAuth, requireRole('admin'), validateRequest(updateUserSchema), asyncHandler(async (req, res) => {
   const data = await updateUser(paramId(req.params.id), req.body);
+  res.json({ data });
+}));
+
+router.patch('/:id/referral-slug', requireAuth, requireRole('admin'), validateRequest(updateUserReferralSlugSchema), asyncHandler(async (req, res) => {
+  const actor = res.locals.profile as { id: string; nom: string };
+  const data = await updateUserReferralSlug(paramId(req.params.id), req.body.referralSlug, actor.id, actor.nom);
   res.json({ data });
 }));
 

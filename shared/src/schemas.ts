@@ -3,8 +3,12 @@ import {
   IMAGE_MIME_TYPES,
   LISTING_STATUSES,
   MAX_IMAGE_SIZE_MB,
+  MAX_VIDEO_DURATION_DISPLAY_SECONDS,
   MAX_VIDEO_DURATION_SECONDS,
   MAX_VIDEO_SIZE_MB,
+  REFERRAL_USERNAME_MAX_LENGTH,
+  REFERRAL_USERNAME_MIN_LENGTH,
+  REFERRAL_USERNAME_PATTERN,
   TRAITEMENT_STATUTS,
   USER_ROLES,
   VIDEO_MIME_TYPES,
@@ -51,6 +55,16 @@ export const updateUserSchema = z.object({
   nom: z.string().min(1).optional(),
   role: z.enum(USER_ROLES).optional(),
   actif: z.boolean().optional(),
+});
+
+export const updateUserReferralSlugSchema = z.object({
+  referralSlug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(REFERRAL_USERNAME_MIN_LENGTH, `Min. ${REFERRAL_USERNAME_MIN_LENGTH} caractères`)
+    .max(REFERRAL_USERNAME_MAX_LENGTH, `Max. ${REFERRAL_USERNAME_MAX_LENGTH} caractères`)
+    .regex(REFERRAL_USERNAME_PATTERN, 'Lettres et chiffres seulement (a-z, 0-9)'),
 });
 
 export const requestMediaUploadSchema = z.object({
@@ -167,7 +181,7 @@ export function validateVideoDuration(durationSeconds: number) {
     return 'Durée vidéo invalide';
   }
   if (durationSeconds > MAX_VIDEO_DURATION_SECONDS) {
-    return `Vidéo trop longue (max ${MAX_VIDEO_DURATION_SECONDS} secondes)`;
+    return `Vidéo trop longue (max ${MAX_VIDEO_DURATION_DISPLAY_SECONDS} secondes)`;
   }
   return null;
 }

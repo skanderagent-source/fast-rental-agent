@@ -193,8 +193,8 @@ describe('media API', () => {
   it('reorders listing media for agent', async () => {
     const listingId = '00000000-0000-4000-8000-000000000001';
     const mediaRows = [
-      { id: '00000000-0000-4000-8000-000000000011', listing_id: listingId, sort_order: 0, upload_completed_at: '2026-01-01', status: 'approved', object_key: 'k1', original_filename: 'a.jpg', type: 'image' },
-      { id: '00000000-0000-4000-8000-000000000012', listing_id: listingId, sort_order: 1, upload_completed_at: '2026-01-02', status: 'approved', object_key: 'k2', original_filename: 'b.jpg', type: 'image' },
+      { id: '00000000-0000-4000-8000-000000000011', listing_id: listingId, sort_order: 0, uploaded_by: 'agent-1', upload_completed_at: '2026-01-01', status: 'approved', object_key: 'k1', original_filename: 'a.jpg', type: 'image' },
+      { id: '00000000-0000-4000-8000-000000000012', listing_id: listingId, sort_order: 1, uploaded_by: 'agent-1', upload_completed_at: '2026-01-02', status: 'approved', object_key: 'k2', original_filename: 'b.jpg', type: 'image' },
     ];
     mockGetUser.mockResolvedValue({
       data: { user: { id: 'agent-1', email: 'agent@test.com' } },

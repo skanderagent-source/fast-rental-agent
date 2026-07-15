@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Download, Trash2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabaseClient';
@@ -7,6 +7,7 @@ import { useAuth } from '../../app/providers/AuthProvider';
 import { useToast } from '../../components/common/ToastProvider';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { MediaLightbox } from '../../components/common/MediaLightbox';
+import { buildInventoryReferralUrl, copyTextToClipboard } from '../../lib/referral';
 import type { ListingMedia } from '@fast-rental/shared';
 
 type MediaListingGroup = {
@@ -76,7 +77,6 @@ function ProfileSectionActions({
 export function UserDashboard() {
   const { profile, refreshProfile } = useAuth();
   const toast = useToast();
-  const [nom, setNom] = useState(profile?.nom ?? '');
   const [openSection, setOpenSection] = useState<ProfileSection | null>(null);
   const [cancelDialog, setCancelDialog] = useState<CancelDialogState | null>(null);
   const [currentPhone, setCurrentPhone] = useState('');
@@ -100,10 +100,6 @@ export function UserDashboard() {
     newPassword,
     confirmNewPassword,
   };
-
-  useEffect(() => {
-    if (profile?.nom) setNom(profile.nom);
-  }, [profile?.nom]);
 
   const { data: myRentals } = useQuery({
     queryKey: ['my-rentals'],
@@ -178,12 +174,6 @@ export function UserDashboard() {
     setCancelDialog(null);
   }
 
-  async function saveProfile() {
-    await api.patch('/api/me', { nom });
-    await refreshProfile();
-    toast('✅ Profil mis à jour');
-  }
-
   async function submitPhoneChange() {
     if (!profile) return;
     const next = newPhone.trim();
@@ -256,18 +246,38 @@ export function UserDashboard() {
     }
   }
 
+  async function copyAgentLink() {
+    try {
+      const latest = await refreshProfile();
+      const url = buildInventoryReferralUrl(latest);
+      if (!url) {
+        toast('❌ Impossible de générer votre lien — contactez un admin pour définir votre nom d\'utilisateur.');
+        return;
+      }
+      await copyTextToClipboard(url);
+      toast('Lien copié. Partagez-le — vos clients seront reliés à vous.');
+    } catch {
+      toast('❌ Impossible de copier le lien.');
+    }
+  }
+
   if (!profile) return <div className="panel-scroll empty">Chargement…</div>;
 
   return (
     <div className="panel-scroll profile-page">
       <section className="profile-hero">
-        <div className="profile-hero__avatar" aria-hidden>{initials(nom || profile.nom)}</div>
+        <div className="profile-hero__avatar" aria-hidden>{initials(profile.nom)}</div>
         <div className="profile-hero__body">
-          <div className="profile-hero__top">
-            <h2 className="profile-hero__name">{profile.nom}</h2>
-            <span className={`badge ${profile.role === 'admin' ? 'badge-admin' : 'badge-agent'}`}>
-              {profile.role === 'admin' ? 'Admin' : 'Agent'}
-            </span>
+          <div className="profile-hero__header">
+            <div className="profile-hero__top">
+              <h2 className="profile-hero__name">{profile.nom}</h2>
+              <span className={`badge ${profile.role === 'admin' ? 'badge-admin' : 'badge-agent'}`}>
+                {profile.role === 'admin' ? 'Admin' : 'Agent'}
+              </span>
+            </div>
+            <button type="button" className="profile-btn profile-btn--ghost profile-hero__link-btn" onClick={() => void copyAgentLink()}>
+              Mon Lien
+            </button>
           </div>
           <p className="profile-hero__email">{profile.email}</p>
           {profile.telephone && <p className="profile-hero__phone">{profile.telephone}</p>}
@@ -280,15 +290,6 @@ export function UserDashboard() {
 
       <section className="profile-card">
         <h3 className="profile-card__title">Informations</h3>
-        <div className="profile-name-row">
-          <div className="form-field profile-name-row__field">
-            <label htmlFor="profile-nom">Nom affiché</label>
-            <input id="profile-nom" value={nom} onChange={(e) => setNom(e.target.value)} />
-          </div>
-          <button type="button" className="profile-btn profile-btn--primary" onClick={() => void saveProfile()}>
-            Enregistrer
-          </button>
-        </div>
         <div className="profile-actions">
           <button
             type="button"
@@ -302,14 +303,16 @@ export function UserDashboard() {
             className={`profile-btn profile-btn--ghost${openSection === 'email' ? ' profile-btn--active' : ''}`}
             onClick={() => handleSectionTabClick('email')}
           >
-            ✉️ Email
+            <span className="profile-btn__icon profile-btn__icon--email" aria-hidden>✉️</span>
+            Email
           </button>
           <button
             type="button"
             className={`profile-btn profile-btn--ghost${openSection === 'password' ? ' profile-btn--active' : ''}`}
             onClick={() => handleSectionTabClick('password')}
           >
-            🔒 Mot de passe
+            <span className="profile-btn__icon profile-btn__icon--lock" aria-hidden>🔒</span>
+            Mot de passe
           </button>
         </div>
         {openSection === 'phone' && (

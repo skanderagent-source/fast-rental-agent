@@ -121,7 +121,14 @@ router.get('/:id/media', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 router.put('/:id/media/order', requireAuth, validateRequest(reorderListingMediaSchema), asyncHandler(async (req, res) => {
-  const data = await reorderListingMedia(paramId(req.params.id), req.body.mediaIds);
+  const user = res.locals.user as { id: string };
+  const profile = res.locals.profile as { role: string };
+  const data = await reorderListingMedia(
+    paramId(req.params.id),
+    req.body.mediaIds,
+    user.id,
+    profile.role === 'admin',
+  );
   res.json({ data });
 }));
 

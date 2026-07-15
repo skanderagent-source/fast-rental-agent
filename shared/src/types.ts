@@ -23,6 +23,7 @@ export type AgentProfile = {
   actif: boolean;
   must_change_password: boolean;
   profile_photo_media_id: string | null;
+  referral_slug: string;
   created_at: string;
   updated_at: string;
 };
@@ -126,6 +127,7 @@ export type Lead = {
 export type LeadListItem = Lead & {
   listing_adresse?: string | null;
   ref_agent_nom?: string | null;
+  ref_agent_username?: string | null;
 };
 
 export type Comment = {

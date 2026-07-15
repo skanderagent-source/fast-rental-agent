@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/apiClient';
-import { esc } from '../../lib/format';
+import { esc, formatEventDate } from '../../lib/format';
 import {
   extractUserMessage,
   formatLeadCurrency,
@@ -89,9 +89,9 @@ function LeadAssignBlock({
   return (
     <div className="demande-assign">
       <div className="form-field demande-assign__field">
-        <label htmlFor={`assign-${lead.id}`}>Agent</label>
         <select
           id={`assign-${lead.id}`}
+          aria-label="Choisir un agent"
           value={selectedAgentId}
           onChange={(e) => setSelectedAgentId(e.target.value)}
         >
@@ -243,7 +243,7 @@ export function DemandesPanel() {
   if (isLoading) return <div className="panel-scroll empty">Chargement…</div>;
 
   return (
-    <div className="panel-scroll demandes-page">
+    <div className={`panel-scroll demandes-page${view === 'archived' ? ' demandes-page--archived' : ''}`}>
       <section className="profile-card demandes-toolbar">
         {view === 'active' ? (
           <div className="demandes-toolbar__row">
@@ -347,43 +347,60 @@ export function DemandesPanel() {
             </div>
 
             <p className="demande-card__hint demande-card__hint--meta">
-              Reçue le {new Date(lead.created_at).toLocaleString('fr-CA')}
+              Reçue le <time dateTime={lead.created_at}>{formatEventDate(lead.created_at)}</time>
             </p>
 
             <LeadDetails lead={lead} />
 
-            {lead.ref_agent_nom && isAdmin && (
-              <p className="demande-card__hint">
-                Suggestion référence : {esc(lead.ref_agent_nom)}
-              </p>
-            )}
-            {lead.ref_agent_id && !lead.ref_agent_nom && isAdmin && (
-              <p className="demande-card__hint">
-                Suggestion référence : agent {lead.ref_agent_id.slice(0, 8)}…
-              </p>
-            )}
+            {((isAdmin && (lead.ref_agent_username || lead.ref_agent_id))
+              || (lead.statut === 'archivé' && lead.assigne_nom && isAdmin)
+              || (lead.statut === 'archivé' && !isAdmin && view === 'archived' && lead.traitement_statut)
+              || (lead.statut === 'archivé' && !lead.assigne_a && isAdmin && view === 'archived')) && (
+              <div className="demande-card__footer-meta">
+                {isAdmin && lead.ref_agent_username && (
+                  <p className="demande-card__hint demande-card__hint--footer">
+                    Lien de référence : {esc(lead.ref_agent_username)}
+                  </p>
+                )}
+                {isAdmin && lead.ref_agent_id && !lead.ref_agent_username && (
+                  <p className="demande-card__hint demande-card__hint--footer">
+                    Lien de référence : agent {lead.ref_agent_id.slice(0, 8)}…
+                  </p>
+                )}
 
-            {lead.statut === 'archivé' && lead.assigne_nom && isAdmin && (
-              <p className="demande-card__hint">
-                Assignée à {esc(lead.assigne_nom)}
-                {lead.archived_at && ` · ${new Date(lead.archived_at).toLocaleDateString('fr-CA')}`}
-                {lead.traitement_statut && ` · ${traitementStatutLabel(lead.traitement_statut)}`}
-              </p>
-            )}
+                {lead.statut === 'archivé' && lead.assigne_nom && isAdmin && (
+                  <p className="demande-card__hint demande-card__hint--footer">
+                    Assignée à {esc(lead.assigne_nom)}
+                    {lead.archived_at && (
+                      <>
+                        {' · '}
+                        <time dateTime={lead.archived_at}>{formatEventDate(lead.archived_at)}</time>
+                      </>
+                    )}
+                    {lead.traitement_statut && ` · ${traitementStatutLabel(lead.traitement_statut)}`}
+                  </p>
+                )}
 
-            {lead.statut === 'archivé' && !isAdmin && view === 'archived' && lead.traitement_statut && (
-              <p className="demande-card__hint">
-                Statut : {traitementStatutLabel(lead.traitement_statut)}
-                {lead.last_agent_update_at
-                  ? ` · Classé le ${new Date(lead.last_agent_update_at).toLocaleDateString('fr-CA')}`
-                  : ''}
-              </p>
-            )}
+                {lead.statut === 'archivé' && !isAdmin && view === 'archived' && lead.traitement_statut && (
+                  <p className="demande-card__hint demande-card__hint--footer">
+                    Statut : {traitementStatutLabel(lead.traitement_statut)}
+                    {lead.last_agent_update_at && (
+                      <>
+                        {' · Classé le '}
+                        <time dateTime={lead.last_agent_update_at}>
+                          {formatEventDate(lead.last_agent_update_at)}
+                        </time>
+                      </>
+                    )}
+                  </p>
+                )}
 
-            {lead.statut === 'archivé' && !lead.assigne_a && isAdmin && view === 'archived' && (
-              <p className="demande-card__hint demande-card__hint--warning">
-                Aucun agent assigné — cette demande n’apparaît pas dans les demandes d’un agent.
-              </p>
+                {lead.statut === 'archivé' && !lead.assigne_a && isAdmin && view === 'archived' && (
+                  <p className="demande-card__hint demande-card__hint--footer demande-card__hint--warning">
+                    Aucun agent assigné — cette demande n’apparaît pas dans les demandes d’un agent.
+                  </p>
+                )}
+              </div>
             )}
 
             {isAdmin && !lead.assigne_a && (

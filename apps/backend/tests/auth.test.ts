@@ -103,8 +103,13 @@ describe('admin routes', () => {
         if (agentQuery === 1) {
           return mockChain({ data: { id: 'admin-1', actif: true, role: 'admin', nom: 'Admin' }, error: null });
         }
+        if (agentQuery === 2) {
+          const chain = mockChain({ data: null, error: null });
+          chain.maybeSingle = vi.fn(async () => ({ data: null, error: null }));
+          return chain;
+        }
         return mockChain({
-          data: { id: 'new-user', email: 'agent@test.com', nom: 'New Agent', role: 'agent', actif: true },
+          data: { id: 'new-user', email: 'newagent@test.com', nom: 'New Agent', role: 'agent', actif: true },
           error: null,
         });
       }
@@ -114,9 +119,9 @@ describe('admin routes', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', 'Bearer fake-token')
-      .send({ nom: 'New Agent', email: 'agent@test.com', password: 'secret123', role: 'agent' });
+      .send({ nom: 'New Agent', email: 'newagent@test.com', password: 'secret123', role: 'agent' });
     expect(res.status).toBe(200);
-    expect(res.body.data.email).toBe('agent@test.com');
+    expect(res.body.data.email).toBe('newagent@test.com');
   });
 
   it('rejects agent creating user', async () => {

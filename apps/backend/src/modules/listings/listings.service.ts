@@ -482,22 +482,46 @@ export async function deleteMedia(mediaId: string, userId: string, isAdmin: bool
   return { deleted: true };
 }
 
-export async function reorderListingMedia(listingId: string, mediaIds: string[]) {
+export async function reorderListingMedia(
+  listingId: string,
+  mediaIds: string[],
+  userId: string,
+  isAdmin: boolean,
+) {
   await getListing(listingId);
 
   const { data: existing, error } = await supabaseAdmin
     .from('listing_media')
-    .select('id')
-    .eq('listing_id', listingId);
+    .select('id, uploaded_by, sort_order')
+    .eq('listing_id', listingId)
+    .order('sort_order', { ascending: true });
   if (error) throw error;
 
-  const existingIds = new Set((existing ?? []).map((row) => row.id));
+  const rows = existing ?? [];
+  const existingIds = new Set(rows.map((row) => row.id));
   if (mediaIds.length !== existingIds.size) {
     throw Object.assign(new Error('La liste de médias est incomplète ou invalide'), { status: 400, code: 'VALIDATION_ERROR' });
   }
   for (const id of mediaIds) {
     if (!existingIds.has(id)) {
       throw Object.assign(new Error('Média introuvable pour ce logement'), { status: 400, code: 'VALIDATION_ERROR' });
+    }
+  }
+
+  if (!isAdmin) {
+    const oldIds = rows.map((row) => row.id);
+    const changedIds = new Set<string>();
+    for (let i = 0; i < mediaIds.length; i++) {
+      if (mediaIds[i] !== oldIds[i]) {
+        changedIds.add(mediaIds[i]!);
+        changedIds.add(oldIds[i]!);
+      }
+    }
+    for (const id of changedIds) {
+      const row = rows.find((item) => item.id === id);
+      if (row && row.uploaded_by !== userId) {
+        throw forbidden('Non autorisé');
+      }
     }
   }
 

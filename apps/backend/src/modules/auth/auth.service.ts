@@ -22,7 +22,11 @@ export async function getMe(userId: string, userEmail: string) {
 
 export async function updateProfile(
   userId: string,
-  input: { nom?: string; telephone?: string | null; profilePhotoMediaId?: string | null },
+  input: {
+    nom?: string;
+    telephone?: string | null;
+    profilePhotoMediaId?: string | null;
+  },
 ) {
   const updates: Record<string, unknown> = {};
   if (input.nom !== undefined) updates.nom = input.nom;

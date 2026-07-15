@@ -37,8 +37,16 @@ export async function getAgentStats() {
       { count: rejectedMedia },
       { data: lastLogin },
     ] = await Promise.all([
-      supabaseAdmin.from('demandes_clients').select('*', { count: 'exact', head: true }).eq('assigne_a', agent.id),
-      supabaseAdmin.from('demandes_clients').select('*', { count: 'exact', head: true }).eq('assigne_a', agent.id).eq('traitement_statut', 'contacté'),
+      supabaseAdmin
+        .from('demandes_clients')
+        .select('*', { count: 'exact', head: true })
+        .eq('assigne_a', agent.id)
+        .or('traitement_statut.eq.assigné,traitement_statut.is.null'),
+      supabaseAdmin
+        .from('demandes_clients')
+        .select('*', { count: 'exact', head: true })
+        .eq('assigne_a', agent.id)
+        .eq('traitement_statut', 'contacté'),
       supabaseAdmin.from('demandes_clients').select('*', { count: 'exact', head: true }).eq('assigne_a', agent.id).eq('traitement_statut', 'réglé'),
       supabaseAdmin.from('demandes_clients').select('*', { count: 'exact', head: true }).eq('assigne_a', agent.id).eq('traitement_statut', 'refusé'),
       supabaseAdmin.from('rentals').select('*', { count: 'exact', head: true }).eq('agent_id', agent.id),

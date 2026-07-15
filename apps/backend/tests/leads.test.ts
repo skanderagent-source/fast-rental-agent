@@ -249,4 +249,65 @@ describe('leads API', () => {
     expect(res.body.data.items).toHaveLength(1);
   });
 
+  it('finalizes lead progress with statut archivé and archived_at', async () => {
+    const agentUuid = '00000000-0000-4000-8000-000000000002';
+    const leadId = '00000000-0000-4000-8000-000000000099';
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: agentUuid, email: 'agent@test.com' } },
+      error: null,
+    });
+
+    let demandeQuery = 0;
+    const update = vi.fn().mockReturnThis();
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'agents') {
+        return mockChain({ data: { id: agentUuid, nom: 'Agent', actif: true, role: 'agent' }, error: null });
+      }
+      if (table === 'demandes_clients') {
+        demandeQuery += 1;
+        if (demandeQuery === 1) {
+          return mockChain({
+            data: {
+              id: leadId,
+              assigne_a: agentUuid,
+              statut: 'assigné',
+              traitement_statut: 'contacté',
+              archived_at: null,
+            },
+            error: null,
+          });
+        }
+        const chain = mockChain({
+          data: {
+            id: leadId,
+            assigne_a: agentUuid,
+            statut: 'archivé',
+            traitement_statut: 'réglé',
+            archived_at: '2026-07-15T20:33:59.797Z',
+            last_agent_update_at: '2026-07-15T20:33:59.797Z',
+          },
+          error: null,
+        });
+        chain.update = update;
+        return chain;
+      }
+      return mockChain({ data: [], error: null });
+    });
+
+    const res = await request(app)
+      .patch(`/api/leads/${leadId}/progress`)
+      .set('Authorization', 'Bearer t')
+      .send({ traitementStatut: 'réglé' });
+
+    expect(res.status).toBe(200);
+    expect(update).toHaveBeenCalledWith({
+      traitement_statut: 'réglé',
+      last_agent_update_at: expect.any(String),
+      statut: 'archivé',
+      archived_at: expect.any(String),
+    });
+    expect(res.body.data.statut).toBe('archivé');
+    expect(res.body.data.traitement_statut).toBe('réglé');
+  });
+
 });

@@ -1,5 +1,5 @@
 import type { LeadListItem, TraitementStatut } from '@fast-rental/shared';
-import { AGENT_ARCHIVED_TRAITEMENT_STATUTS } from '@fast-rental/shared';
+import { AGENT_ARCHIVED_TRAITEMENT_STATUTS, referralUsernameFromNom } from '@fast-rental/shared';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { getPagination } from '../../utils/pagination.js';
 import { emailService } from '../email/email.service.js';
@@ -26,19 +26,23 @@ async function enrichLeads(items: LeadListItem[]): Promise<LeadListItem[]> {
     }
   }
 
-  const agentById = new Map<string, string>();
+  const agentById = new Map<string, { nom: string }>();
   if (refAgentIds.length > 0) {
     const { data } = await supabaseAdmin.from('agents').select('id,nom').in('id', refAgentIds);
     for (const agent of data ?? []) {
-      agentById.set(agent.id, agent.nom);
+      agentById.set(agent.id, { nom: agent.nom });
     }
   }
 
-  return items.map((lead) => ({
-    ...lead,
-    listing_adresse: lead.listing_id ? listingById.get(lead.listing_id) ?? null : null,
-    ref_agent_nom: lead.ref_agent_id ? agentById.get(lead.ref_agent_id) ?? null : null,
-  }));
+  return items.map((lead) => {
+    const refAgent = lead.ref_agent_id ? agentById.get(lead.ref_agent_id) : undefined;
+    return {
+      ...lead,
+      listing_adresse: lead.listing_id ? listingById.get(lead.listing_id) ?? null : null,
+      ref_agent_nom: refAgent?.nom ?? null,
+      ref_agent_username: refAgent ? referralUsernameFromNom(refAgent.nom) : null,
+    };
+  });
 }
 
 function applyAgentAssignedLeadFilters<T extends { eq: (column: string, value: string) => T }>(
@@ -210,12 +214,27 @@ export async function updateLeadProgress(
     throw forbidden('Non autorisé');
   }
 
+  const now = new Date().toISOString();
+  const patch: {
+    traitement_statut: TraitementStatut;
+    last_agent_update_at: string;
+    statut?: 'archivé';
+    archived_at?: string;
+  } = {
+    traitement_statut: traitementStatut,
+    last_agent_update_at: now,
+  };
+
+  if ((AGENT_ARCHIVED_TRAITEMENT_STATUTS as readonly TraitementStatut[]).includes(traitementStatut)) {
+    patch.statut = 'archivé';
+    if (!lead.archived_at) {
+      patch.archived_at = now;
+    }
+  }
+
   const { data, error } = await supabaseAdmin
     .from('demandes_clients')
-    .update({
-      traitement_statut: traitementStatut,
-      last_agent_update_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('id', leadId)
     .select('*')
     .single();

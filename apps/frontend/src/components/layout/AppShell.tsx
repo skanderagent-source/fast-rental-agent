@@ -54,7 +54,7 @@ export function AppShell() {
         {isAdmin && (
           <>
             <NavLink to="admin/listings/new" className={tabClassName}>
-              <span className="app-tab__label">Ajouter</span>
+              <span className="app-tab__label">Ajouter logement</span>
             </NavLink>
             <NavLink to="admin" end className={tabClassName}>
               <span className="app-tab__label">Gestion</span>

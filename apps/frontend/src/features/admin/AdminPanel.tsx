@@ -1,12 +1,20 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/apiClient';
+import {
+  isValidReferralUsername,
+  normalizeReferralUsername,
+  REFERRAL_USERNAME_MAX_LENGTH,
+  REFERRAL_USERNAME_MIN_LENGTH,
+} from '@fast-rental/shared';
+import { api, ApiError } from '../../lib/apiClient';
 import { useToast } from '../../components/common/ToastProvider';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 
 import type { AgentStats } from '@fast-rental/shared';
 
-type AdminUser = { id: string; nom: string; email: string; role: string; actif: boolean };
+type AdminUser = { id: string; nom: string; email: string; role: string; actif: boolean; referral_slug: string };
+
+const USERNAME_HINT = `Lettres et chiffres seulement (a-z, 0-9), ${REFERRAL_USERNAME_MIN_LENGTH}–${REFERRAL_USERNAME_MAX_LENGTH} caractères.`;
 
 export function AdminPanel() {
   const toast = useToast();
@@ -40,6 +48,11 @@ export function AdminPanel() {
   const [suspendStep, setSuspendStep] = useState<0 | 1 | 2>(0);
   const [reactivateTarget, setReactivateTarget] = useState<AdminUser | null>(null);
   const [reactivateStep, setReactivateStep] = useState<0 | 1 | 2>(0);
+  const [usernameEditUser, setUsernameEditUser] = useState<AdminUser | null>(null);
+  const [usernameStep, setUsernameStep] = useState<0 | 1 | 2>(0);
+  const [newUsername, setNewUsername] = useState('');
+  const [confirmUsername, setConfirmUsername] = useState('');
+  const [pendingUsername, setPendingUsername] = useState('');
 
   async function refreshUsers() {
     await Promise.all([refetchUsers(), refetchAgents()]);
@@ -58,6 +71,67 @@ export function AdminPanel() {
   function cancelReactivate() {
     setReactivateTarget(null);
     setReactivateStep(0);
+  }
+
+  function closeUsernameEdit() {
+    setUsernameEditUser(null);
+    setUsernameStep(0);
+    setNewUsername('');
+    setConfirmUsername('');
+    setPendingUsername('');
+  }
+
+  function openUsernameEdit(user: AdminUser) {
+    if (usernameEditUser?.id === user.id) {
+      closeUsernameEdit();
+      return;
+    }
+    setUsernameEditUser(user);
+    setUsernameStep(0);
+    setNewUsername('');
+    setConfirmUsername('');
+    setPendingUsername('');
+  }
+
+  function sanitizeUsernameInput(value: string) {
+    return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  function requestUsernameChange() {
+    if (!usernameEditUser) return;
+    const current = normalizeReferralUsername(usernameEditUser.referral_slug);
+    const next = normalizeReferralUsername(newUsername);
+    const confirm = normalizeReferralUsername(confirmUsername);
+
+    if (!isValidReferralUsername(next)) {
+      toast(`❌ Nom d'utilisateur invalide (${REFERRAL_USERNAME_MIN_LENGTH}–${REFERRAL_USERNAME_MAX_LENGTH} caractères, a-z et 0-9)`);
+      return;
+    }
+    if (next !== confirm) {
+      toast('❌ Les noms d\'utilisateur ne correspondent pas');
+      return;
+    }
+    if (next === current) {
+      toast('❌ Le nouveau nom d\'utilisateur doit être différent');
+      return;
+    }
+
+    setPendingUsername(next);
+    setUsernameStep(1);
+  }
+
+  async function confirmUsernameChange() {
+    if (!usernameEditUser || !pendingUsername) return;
+    try {
+      await api.patch(`/api/users/${usernameEditUser.id}/referral-slug`, { referralSlug: pendingUsername });
+      toast('✅ Nom d\'utilisateur mis à jour');
+      closeUsernameEdit();
+      void refreshUsers();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Mise à jour impossible';
+      toast(`⚠️ ${message}`);
+      setUsernameStep(0);
+    }
   }
 
   async function confirmDelete() {
@@ -158,45 +232,90 @@ export function AdminPanel() {
                 <div>
                   <div className="profile-list-item__title">{u.nom}</div>
                   <div className="admin-user-row__email">{u.email}</div>
+                  <div className="admin-user-row__role">@{u.referral_slug}</div>
                   <div className="admin-user-row__role">{u.role === 'admin' ? 'Administrateur' : 'Agent'}</div>
                 </div>
                 <span className={`badge ${u.actif ? 'badge-d' : 'badge-n'}`}>{u.actif ? 'Actif' : 'Suspendu'}</span>
               </div>
               <div className="admin-user-row__actions">
-                {u.actif ? (
+                <div className="admin-user-row__actions-left">
+                  {u.actif ? (
+                    <button
+                      type="button"
+                      className="profile-btn profile-btn--warning"
+                      onClick={() => {
+                        setSuspendTarget(u);
+                        setSuspendStep(1);
+                      }}
+                    >
+                      Suspendre
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="profile-btn profile-btn--ghost"
+                      onClick={() => {
+                        setReactivateTarget(u);
+                        setReactivateStep(1);
+                      }}
+                    >
+                      Réactiver
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className="profile-btn profile-btn--warning"
+                    className="profile-btn profile-btn--danger"
                     onClick={() => {
-                      setSuspendTarget(u);
-                      setSuspendStep(1);
+                      setDeleteTarget(u);
+                      setDeleteStep(1);
                     }}
                   >
-                    Suspendre
+                    Supprimer
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="profile-btn profile-btn--ghost"
-                    onClick={() => {
-                      setReactivateTarget(u);
-                      setReactivateStep(1);
-                    }}
-                  >
-                    Réactiver
-                  </button>
-                )}
+                </div>
                 <button
                   type="button"
-                  className="profile-btn profile-btn--danger"
-                  onClick={() => {
-                    setDeleteTarget(u);
-                    setDeleteStep(1);
-                  }}
+                  className={`profile-btn profile-btn--primary admin-user-row__modifier-btn${usernameEditUser?.id === u.id ? ' profile-btn--active' : ''}`}
+                  onClick={() => openUsernameEdit(u)}
                 >
-                  Supprimer
+                  Modifier
                 </button>
               </div>
+              {usernameEditUser?.id === u.id && (
+                <div className="profile-expand admin-username-expand">
+                  <div className="form-field">
+                    <label htmlFor={`username-new-${u.id}`}>Nouveau nom d&apos;utilisateur</label>
+                    <input
+                      id={`username-new-${u.id}`}
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(sanitizeUsernameInput(e.target.value))}
+                      autoComplete="off"
+                      spellCheck={false}
+                      maxLength={REFERRAL_USERNAME_MAX_LENGTH}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label htmlFor={`username-confirm-${u.id}`}>Confirmer le nouveau nom d&apos;utilisateur</label>
+                    <input
+                      id={`username-confirm-${u.id}`}
+                      value={confirmUsername}
+                      onChange={(e) => setConfirmUsername(sanitizeUsernameInput(e.target.value))}
+                      autoComplete="off"
+                      spellCheck={false}
+                      maxLength={REFERRAL_USERNAME_MAX_LENGTH}
+                    />
+                    <p className="profile-field-hint">{USERNAME_HINT}</p>
+                  </div>
+                  <div className="profile-expand__actions">
+                    <button type="button" className="profile-btn profile-btn--white" onClick={closeUsernameEdit}>
+                      Annuler
+                    </button>
+                    <button type="button" className="profile-btn profile-btn--primary" onClick={requestUsernameChange}>
+                      Confirmer
+                    </button>
+                  </div>
+                </div>
+              )}
             </article>
           ))}
         </div>
@@ -210,7 +329,7 @@ export function AdminPanel() {
               <div className="profile-list-item__title">{a.nom}</div>
               <div className="admin-user-row__email">{a.email}</div>
               <div className="admin-agent-stat__metrics">
-                Leads : {a.assignedLeads} · Contactés : {a.contactedLeads} · Réglés : {a.resolvedLeads} · Refusés : {a.refusedLeads} · Locations : {a.rentalCount} · Médias : {a.mediaUploaded}
+                Assignés : {a.assignedLeads} · Contactés : {a.contactedLeads} · Réglés : {a.resolvedLeads} · Refusés : {a.refusedLeads} · Locations : {a.rentalCount} · Médias : {a.mediaUploaded}
               </div>
             </article>
           ))}
@@ -364,6 +483,25 @@ export function AdminPanel() {
         confirmTone="primary"
         onConfirm={() => void confirmReactivate()}
         onCancel={cancelReactivate}
+      />
+
+      <ConfirmDialog
+        open={usernameStep === 1}
+        message={`Vous allez changer le nom d'utilisateur de ${usernameEditUser?.nom ?? "l'utilisateur"}.`}
+        confirmLabel="Continuer"
+        cancelLabel="Annuler"
+        confirmTone="primary"
+        onConfirm={() => setUsernameStep(2)}
+        onCancel={() => setUsernameStep(0)}
+      />
+      <ConfirmDialog
+        open={usernameStep === 2}
+        message={`Changer le nom d'utilisateur de ${usernameEditUser?.referral_slug ?? ''} à ${pendingUsername}.`}
+        confirmLabel="Confirmer"
+        cancelLabel="Annuler"
+        confirmTone="primary"
+        onConfirm={() => void confirmUsernameChange()}
+        onCancel={() => setUsernameStep(0)}
       />
     </div>
   );
