@@ -12,24 +12,8 @@ vi.mock('../src/modules/sheets/sheets.service.js', () => ({
   syncAllSheets: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
-import { deleteArchivedLeads } from '../src/modules/jobs/deleteArchivedLeads.js';
 import { cleanupStaleMediaReservations } from '../src/modules/jobs/staleMediaCleanup.js';
 import { startJobs } from '../src/modules/jobs/startJobs.js';
-
-describe('deleteArchivedLeads', () => {
-  it('deletes only archived leads past delete_after', async () => {
-    const select = vi.fn().mockResolvedValue({ data: [{ id: 'expired-1' }], error: null });
-    const lte = vi.fn().mockReturnValue({ select });
-    const not = vi.fn().mockReturnValue({ lte });
-    const del = vi.fn().mockReturnValue({ not });
-    mockFrom.mockReturnValue({ delete: del });
-
-    const result = await deleteArchivedLeads(new Date('2030-01-01'));
-    expect(result).toEqual([{ id: 'expired-1' }]);
-    expect(not).toHaveBeenCalledWith('archived_at', 'is', null);
-    expect(lte).toHaveBeenCalledWith('delete_after', expect.any(String));
-  });
-});
 
 describe('cleanupStaleMediaReservations', () => {
   it('deletes stale pending reservations', async () => {

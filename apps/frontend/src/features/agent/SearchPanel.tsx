@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/apiClient';
 import { env } from '../../lib/env';
-import { esc, formatPrice, statusClass, statusLabel } from '../../lib/format';
+import { esc, statusLabel } from '../../lib/format';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { useToast } from '../../components/common/ToastProvider';
 import { ApplicationMessageModal } from '../../components/listings/ApplicationMessageModal';
@@ -12,7 +12,8 @@ import { FacebookAdModal } from '../../components/listings/FacebookAdModal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { MediaLightbox } from '../../components/common/MediaLightbox';
 import type { Listing, ListingMedia } from '@fast-rental/shared';
-import { MAX_IMAGES_PER_LISTING, MAX_VIDEOS_PER_LISTING } from '@fast-rental/shared';
+import { MAX_IMAGES_PER_LISTING, MAX_VIDEOS_PER_LISTING, MAX_VIDEO_DURATION_SECONDS } from '@fast-rental/shared';
+import { readVideoDurationSeconds } from '../../lib/media';
 
 type ListingsResponse = {
   items: Listing[];
@@ -161,6 +162,19 @@ export function SearchPanel() {
   );
 }
 
+function inventoryBadgeClass(statut: string) {
+  if (statut === 'Available') return 'inventory-listing-badge--available';
+  if (statut === 'On Hold') return 'inventory-listing-badge--hold';
+  if (statut === 'Rented') return 'inventory-listing-badge--rented';
+  if (statut === 'In Reno') return 'inventory-listing-badge--reno';
+  return 'inventory-listing-badge--unavailable';
+}
+
+function formatInventoryPrice(value: number | null | undefined) {
+  if (!value) return null;
+  return Number(value).toLocaleString('fr-CA');
+}
+
 function Stat({ num, label, color }: { num: number | string; label: string; color?: string }) {
   return (
     <div className="admin-stat" style={{ padding: 8, textAlign: 'center' }}>
@@ -204,37 +218,38 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
     setDeleteStep(0);
   }
 
-  async function finishDelete() {
+  function finishDelete() {
     if (!deleteTarget) return;
     const deleted = deleteTarget;
-    try {
-      await api.delete(`/api/listings/media/${deleted.id}`);
-      queryClient.setQueriesData<{ listing: Listing; media: ListingMedia[] }>(
-        { queryKey: ['listing', listing.id] },
-        (prev) => (prev ? { ...prev, media: prev.media.filter((m) => m.id !== deleted.id) } : prev),
-      );
-      queryClient.setQueriesData<Array<{ listingId: string; adresse: string; media: ListingMedia[] }>>(
-        { queryKey: ['my-media-grouped'] },
-        (prev) =>
-          prev
-            ?.map((group) =>
-              group.listingId === deleted.listing_id
-                ? { ...group, media: group.media.filter((m) => m.id !== deleted.id) }
-                : group,
-            )
-            .filter((group) => group.media.length > 0) ?? prev,
-      );
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['listing', listing.id] }),
-        queryClient.invalidateQueries({ queryKey: ['my-media-grouped'] }),
-      ]);
-      toast('Média supprimé');
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Suppression impossible';
-      toast(`⚠️ ${message}`);
-    } finally {
-      cancelDelete();
-    }
+    cancelDelete();
+
+    queryClient.setQueriesData<{ listing: Listing; media: ListingMedia[] }>(
+      { queryKey: ['listing', listing.id] },
+      (prev) => (prev ? { ...prev, media: prev.media.filter((m) => m.id !== deleted.id) } : prev),
+    );
+    queryClient.setQueriesData<Array<{ listingId: string; adresse: string; media: ListingMedia[] }>>(
+      { queryKey: ['my-media-grouped'] },
+      (prev) =>
+        prev
+          ?.map((group) =>
+            group.listingId === deleted.listing_id
+              ? { ...group, media: group.media.filter((m) => m.id !== deleted.id) }
+              : group,
+          )
+          .filter((group) => group.media.length > 0) ?? prev,
+    );
+
+    void (async () => {
+      try {
+        await api.delete(`/api/listings/media/${deleted.id}`);
+        toast('Média supprimé');
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Suppression impossible';
+        toast(`⚠️ ${message}`);
+        void queryClient.invalidateQueries({ queryKey: ['listing', listing.id] });
+        void queryClient.invalidateQueries({ queryKey: ['my-media-grouped'] });
+      }
+    })();
   }
 
   async function uploadMedia(type: 'image' | 'video', file: File) {
@@ -244,6 +259,21 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
       toast(`⚠️ Limite atteinte (${max} ${type === 'image' ? 'photos' : 'vidéo'} max par logement)`);
       return false;
     }
+
+    let durationSeconds: number | undefined;
+    if (type === 'video') {
+      try {
+        durationSeconds = await readVideoDurationSeconds(file);
+      } catch {
+        toast('⚠️ Impossible de lire la durée de la vidéo');
+        return false;
+      }
+      if (durationSeconds > MAX_VIDEO_DURATION_SECONDS) {
+        toast(`⚠️ Vidéo trop longue (max ${MAX_VIDEO_DURATION_SECONDS} secondes)`);
+        return false;
+      }
+    }
+
     try {
       const uploadMeta = await api.post<{
         mediaId: string;
@@ -254,6 +284,7 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
         mimeType: file.type,
         sizeBytes: file.size,
         type,
+        ...(durationSeconds != null ? { durationSeconds } : {}),
       });
       if (uploadMeta.uploadMode === 'proxy') {
         await api.uploadFile(`/api/listings/${listing.id}/media/${uploadMeta.mediaId}/file`, file);
@@ -315,28 +346,77 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
   }
 
   const full = detail?.listing ?? listing;
+  const thumbnail = detail?.media?.find((m) => m.upload_completed_at && m.type === 'image' && m.viewUrl);
+  const approvedMediaCount = listing.approved_media_count ?? 0;
+  const approvedImageCount = listing.approved_image_count ?? 0;
+  const approvedVideoCount = Math.max(0, approvedMediaCount - approvedImageCount);
 
   return (
-    <div className="apt-card">
-      <div className="apt-card-header" style={{ padding: 12, cursor: 'pointer' }} onClick={onToggle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, paddingRight: open ? 36 : 0 }}>{esc(listing.adresse)}</div>
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <span className={`badge ${statusClass(listing.statut)}`}>{statusLabel(listing.statut)}</span>
+    <article className={`inventory-grid-item${open ? ' is-open' : ''}`}>
+      <div
+        className={`inventory-listing-card${open ? ' is-open' : ''}`}
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+      >
+        <div className="inventory-listing-photo">
+          {thumbnail?.viewUrl ? (
+            <img src={thumbnail.viewUrl} alt={listing.adresse} loading="lazy" />
+          ) : (
+            <div className="inventory-photo-placeholder">
+              <span className="inventory-photo-placeholder__icon" aria-hidden>
+                {approvedVideoCount > 0 && approvedImageCount === 0 ? '🎬' : '🏠'}
+              </span>
+              <span className="inventory-photo-placeholder__title">
+                {approvedMediaCount > 0 ? 'Médias disponibles' : 'Aucun média'}
+              </span>
+              <span className="inventory-photo-placeholder__sub">
+                {approvedMediaCount > 0 ? 'Ouvrir pour voir les médias' : 'Ajoutez des photos ou une vidéo'}
+              </span>
+            </div>
+          )}
+          <span className={`inventory-listing-badge ${inventoryBadgeClass(listing.statut)}`}>
+            {statusLabel(listing.statut)}
+          </span>
+          <span className="inventory-listing-source">{esc(listing.source)}</span>
+        </div>
+        <div className="inventory-listing-body">
+          <div className="inventory-listing-area">{esc(listing.quartier ?? listing.ville ?? 'Montréal')}</div>
+          <div className="inventory-listing-addr">{esc(listing.adresse)}</div>
+          <div className="inventory-listing-meta">
+            {listing.taille && (
+              <span className="inventory-listing-tag">📐 {esc(listing.taille)} p.</span>
+            )}
+            {listing.electromenagers && (
+              <span className="inventory-listing-tag">🍳 {esc(listing.electromenagers)}</span>
+            )}
+            {approvedImageCount > 0 ? (
+              <span className="inventory-listing-tag">📷 {approvedImageCount}</span>
+            ) : null}
+            {approvedVideoCount > 0 ? (
+              <span className="inventory-listing-tag">🎬 {approvedVideoCount}</span>
+            ) : null}
           </div>
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>
-          📍 {esc(listing.quartier)}
-          {listing.taille ? ` · ${esc(listing.taille)} p.` : ''}
-          {listing.approved_image_count ? ' 📷' : ''}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-          <div style={{ fontSize: 17, fontWeight: 700 }}>{formatPrice(listing.prix)}</div>
-          <div style={{ fontSize: 10, color: 'var(--text3)' }}>{esc(listing.source)}</div>
+          <div className="inventory-listing-price">
+            {formatInventoryPrice(listing.prix) ? (
+              <>
+                {formatInventoryPrice(listing.prix)}$
+                <small> /mois</small>
+              </>
+            ) : (
+              <small>Prix à confirmer</small>
+            )}
+          </div>
         </div>
       </div>
       {open && (
-        <div className="apt-card-detail">
+        <div className="inventory-listing-detail apt-card-detail">
           <button
             type="button"
             className="apt-card-close"
@@ -372,7 +452,7 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
               <input hidden type="file" accept="image/*" multiple onChange={(e) => { void pickMedia('image', e.target.files); e.target.value = ''; }} />
             </label>
             <label className="btn-secondary" style={{ textAlign: 'center' }}>
-              🎬 Vidéo (max {MAX_VIDEOS_PER_LISTING})
+              🎬 Vidéo (max {MAX_VIDEOS_PER_LISTING}, {MAX_VIDEO_DURATION_SECONDS} s)
               <input hidden type="file" accept="video/*" onChange={(e) => { void pickMedia('video', e.target.files); e.target.value = ''; }} />
             </label>
           </div>
@@ -420,7 +500,7 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
         alt={previewMedia?.original_filename}
         onClose={() => setPreviewMedia(null)}
       />
-    </div>
+    </article>
   );
 }
 

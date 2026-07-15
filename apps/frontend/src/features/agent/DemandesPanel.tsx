@@ -1,92 +1,420 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/apiClient';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError } from '../../lib/apiClient';
 import { esc } from '../../lib/format';
+import {
+  extractUserMessage,
+  formatLeadCurrency,
+  leadTypeLabel,
+  parseDossierTal,
+  traitementStatutLabel,
+} from '../../lib/leads';
+import { LeadProgressControl } from '../agent/LeadProgressControl';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { useToast } from '../../components/common/ToastProvider';
-import type { Lead } from '@fast-rental/shared';
+import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import type { LeadListItem } from '@fast-rental/shared';
 
-type LeadsResponse = { items: Lead[]; summary: { badgeCount: number } };
+type LeadsResponse = {
+  items: LeadListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  summary: { badgeCount: number };
+};
+type AgentOption = { id: string; nom: string; email: string; actif: boolean };
+type LeadView = 'active' | 'archived';
+
+type ArchiveFilters = {
+  assignedTo: string;
+  archivedFrom: string;
+  archivedTo: string;
+};
+
+const emptyArchiveFilters = (): ArchiveFilters => ({
+  assignedTo: '',
+  archivedFrom: '',
+  archivedTo: '',
+});
+
+function buildLeadsQuery(
+  view: LeadView,
+  filters: ArchiveFilters,
+  isAdmin: boolean,
+  page: number,
+) {
+  const params = new URLSearchParams({
+    includeArchived: String(view === 'archived'),
+    page: String(page),
+    pageSize: '50',
+  });
+  if (view === 'archived') {
+    if (isAdmin && filters.assignedTo) params.set('assignedTo', filters.assignedTo);
+    if (filters.archivedFrom) params.set('archivedFrom', filters.archivedFrom);
+    if (filters.archivedTo) params.set('archivedTo', filters.archivedTo);
+  }
+  return params.toString();
+}
+
+function LeadAssignBlock({
+  lead,
+  agents,
+  onAssigned,
+}: {
+  lead: LeadListItem;
+  agents: AgentOption[];
+  onAssigned: () => void;
+}) {
+  const toast = useToast();
+  const [selectedAgentId, setSelectedAgentId] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+
+  async function assignLead() {
+    if (!selectedAgentId) return;
+    try {
+      await api.post(`/api/leads/${lead.id}/assign`, { agentId: selectedAgentId });
+      toast('✅ Assigné et archivé');
+      setSelectedAgentId('');
+      setConfirmOpen(false);
+      onAssigned();
+    } catch (err) {
+      console.error('Lead assignment failed', err);
+      const message = err instanceof ApiError ? err.message : 'Assignation impossible';
+      toast(`⚠️ ${message}`);
+      setConfirmOpen(false);
+    }
+  }
+
+  return (
+    <div className="demande-assign">
+      <div className="form-field demande-assign__field">
+        <label htmlFor={`assign-${lead.id}`}>Agent</label>
+        <select
+          id={`assign-${lead.id}`}
+          value={selectedAgentId}
+          onChange={(e) => setSelectedAgentId(e.target.value)}
+        >
+          <option value="">Choisir un agent…</option>
+          {agents.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.nom}{a.email ? ` (${a.email})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+      <button
+        type="button"
+        className="profile-btn profile-btn--primary demande-assign__confirm"
+        disabled={!selectedAgentId}
+        onClick={() => setConfirmOpen(true)}
+      >
+        Confirmer
+      </button>
+      <ConfirmDialog
+        open={confirmOpen}
+        message={`Vous êtes sur le point d'assigner cette demande à ${selectedAgent?.nom ?? "l'agent"}, êtes-vous sûr ?`}
+        confirmLabel="Assigner"
+        confirmTone="primary"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => void assignLead()}
+      />
+    </div>
+  );
+}
+
+function LeadDetails({ lead }: { lead: LeadListItem }) {
+  const userMessage = extractUserMessage(lead.message);
+  const dossierTal = lead.type_demande === 'prequal' ? parseDossierTal(lead.message) : null;
+
+  return (
+    <div className="demande-card__meta">
+      <div className="demande-card__line">
+        <span className="demande-card__label">Type</span>
+        <span>{leadTypeLabel(lead.type_demande)}</span>
+      </div>
+      <div className="demande-card__line">
+        <span className="demande-card__label">Téléphone</span>
+        <span>{lead.telephone ? esc(lead.telephone) : '—'}</span>
+      </div>
+      <div className="demande-card__line">
+        <span className="demande-card__label">Email</span>
+        <span>{lead.email ? esc(lead.email) : '—'}</span>
+      </div>
+      {lead.listing_adresse && (
+        <div className="demande-card__line">
+          <span className="demande-card__label">Logement</span>
+          <span>{esc(lead.listing_adresse)}</span>
+        </div>
+      )}
+      {lead.type_demande === 'prequal' && (
+        <>
+          <div className="demande-card__line">
+            <span className="demande-card__label">Revenu mensuel</span>
+            <span>{formatLeadCurrency(lead.revenu_mensuel) ?? '—'}</span>
+          </div>
+          <div className="demande-card__line">
+            <span className="demande-card__label">Cote de crédit</span>
+            <span>{lead.score_credit ?? '—'}</span>
+          </div>
+          <div className="demande-card__line">
+            <span className="demande-card__label">Dossier TAL</span>
+            <span>{dossierTal == null ? '—' : dossierTal ? 'Oui' : 'Non'}</span>
+          </div>
+          <div className="demande-card__line">
+            <span className="demande-card__label">Date déménagement</span>
+            <span>
+              {lead.date_demenagement
+                ? new Date(`${lead.date_demenagement}T12:00:00`).toLocaleDateString('fr-CA')
+                : '—'}
+            </span>
+          </div>
+        </>
+      )}
+      {userMessage && (
+        <div className="demande-card__line demande-card__line--message">
+          <span className="demande-card__label">Message</span>
+          <span>{esc(userMessage)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function DemandesPanel() {
-  const { isAdmin } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const queryClient = useQueryClient();
-  const [includeArchived, setIncludeArchived] = useState(false);
+  const [view, setView] = useState<LeadView>('active');
+  const [archiveFilters, setArchiveFilters] = useState<ArchiveFilters>(emptyArchiveFilters);
   const toast = useToast();
 
-  const { data, refetch, isLoading } = useQuery({
-    queryKey: ['leads', includeArchived],
-    queryFn: () => api.get<LeadsResponse>(`/api/leads?includeArchived=${includeArchived}`),
+  const {
+    data,
+    refetch,
+    isLoading,
+    isFetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['leads', profile?.id, view, archiveFilters],
+    queryFn: ({ pageParam }) => api.get<LeadsResponse>(
+      `/api/leads?${buildLeadsQuery(view, archiveFilters, isAdmin, pageParam)}`,
+    ),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (
+      lastPage.page * lastPage.pageSize < lastPage.total ? lastPage.page + 1 : undefined
+    ),
+    enabled: !!profile,
+    refetchInterval: isAdmin ? false : 30_000,
+    staleTime: 0,
   });
 
   const { data: agents } = useQuery({
     queryKey: ['users'],
-    queryFn: () => api.get<Array<{ id: string; nom: string; actif: boolean }>>('/api/users'),
+    queryFn: () => api.get<AgentOption[]>('/api/users'),
     enabled: isAdmin,
   });
 
-  if (isLoading) return <div className="panel-scroll empty">Chargement...</div>;
+  const activeAgents = (agents ?? []).filter((a) => a.actif !== false);
+  const pages = data?.pages ?? [];
+  const items = pages.flatMap((page) => page.items);
+  const total = pages[0]?.total ?? items.length;
+
+  function invalidateAfterAssign() {
+    void queryClient.invalidateQueries({ queryKey: ['leads'] });
+    void queryClient.invalidateQueries({ queryKey: ['leads-badge'] });
+  }
+
+  function openArchives() {
+    setArchiveFilters(emptyArchiveFilters());
+    setView('archived');
+  }
+
+  function backToActiveLeads() {
+    setArchiveFilters(emptyArchiveFilters());
+    setView('active');
+  }
+
+  function updateArchiveFilter<K extends keyof ArchiveFilters>(key: K, value: ArchiveFilters[K]) {
+    setArchiveFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  if (isLoading) return <div className="panel-scroll empty">Chargement…</div>;
 
   return (
-    <div className="panel-scroll">
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ fontSize: 13, color: 'var(--text2)' }}>{data?.items.length ?? 0} demande(s)</div>
-        <button className="btn-secondary" onClick={() => setIncludeArchived(!includeArchived)}>
-          {includeArchived ? 'Masquer archives' : 'Voir archives'}
-        </button>
-      </div>
-      {(data?.items ?? []).map((lead) => (
-        <div key={lead.id} className="demande-card" style={{ padding: 12, marginBottom: 8, opacity: lead.statut === 'archivé' ? 0.6 : 1 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <div style={{ fontWeight: 600 }}>{esc(lead.nom)}</div>
-            <span className="badge badge-a">{lead.statut === 'archivé' ? 'Assignée et archivée' : lead.statut}</span>
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 6, lineHeight: 1.6 }}>
-            {lead.telephone && <>📞 {esc(lead.telephone)}<br /></>}
-            {lead.email && <>✉️ {esc(lead.email)}<br /></>}
-            {lead.message && <>💬 {esc(lead.message)}</>}
-          </div>
-          {lead.ref_agent_id && isAdmin && (
-            <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 6 }}>
-              Suggestion référence: agent {lead.ref_agent_id.slice(0, 8)}...
+    <div className="panel-scroll demandes-page">
+      <section className="profile-card demandes-toolbar">
+        {view === 'active' ? (
+          <div className="demandes-toolbar__row">
+            <div>
+              <h2 className="demandes-toolbar__title">{isAdmin ? 'Demandes clients' : 'Mes demandes'}</h2>
+              <p className="demandes-toolbar__count">
+                {total} demande{total > 1 ? 's' : ''}
+                {items.length < total ? ` · ${items.length} affichée${items.length > 1 ? 's' : ''}` : ''}
+              </p>
             </div>
-          )}
-          {isAdmin && lead.statut !== 'archivé' && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-              <select
-                defaultValue=""
-                onChange={async (e) => {
-                  if (!e.target.value) return;
-                  await api.post(`/api/leads/${lead.id}/assign`, { agentId: e.target.value });
-                  toast('✅ Assigné et archivé');
+            <button
+              type="button"
+              className="profile-btn profile-btn--ghost"
+              onClick={openArchives}
+            >
+              Voir archives
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="demandes-toolbar__row demandes-toolbar__row--archives">
+              <button
+                type="button"
+                className="demandes-back-btn"
+                aria-label="Retour aux demandes actives"
+                onClick={backToActiveLeads}
+              >
+                ←
+              </button>
+              <h2 className="demandes-toolbar__archives-title">{isAdmin ? 'Archives' : 'Mes archives'}</h2>
+            </div>
+
+            <div className="demandes-toolbar__filters">
+              {isAdmin && (
+                <div className="form-field demandes-toolbar__filter">
+                  <label htmlFor="demandes-archive-agent-filter">Agent assigné</label>
+                  <select
+                    id="demandes-archive-agent-filter"
+                    value={archiveFilters.assignedTo}
+                    onChange={(e) => updateArchiveFilter('assignedTo', e.target.value)}
+                  >
+                    <option value="">Tous les agents</option>
+                    {activeAgents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>{agent.nom}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="form-field demandes-toolbar__filter">
+                <label htmlFor="demandes-archive-from-filter">Archivée du</label>
+                <input
+                  id="demandes-archive-from-filter"
+                  type="date"
+                  value={archiveFilters.archivedFrom}
+                  onChange={(e) => updateArchiveFilter('archivedFrom', e.target.value)}
+                />
+              </div>
+              <div className="form-field demandes-toolbar__filter">
+                <label htmlFor="demandes-archive-to-filter">Archivée au</label>
+                <input
+                  id="demandes-archive-to-filter"
+                  type="date"
+                  value={archiveFilters.archivedTo}
+                  min={archiveFilters.archivedFrom || undefined}
+                  onChange={(e) => updateArchiveFilter('archivedTo', e.target.value)}
+                />
+              </div>
+            </div>
+
+            <p className="demandes-toolbar__count">
+              {isFetching && !isFetchingNextPage
+                ? 'Mise à jour…'
+                : `${total} archive${total > 1 ? 's' : ''}${items.length < total ? ` · ${items.length} affichée${items.length > 1 ? 's' : ''}` : ''}`}
+            </p>
+          </>
+        )}
+      </section>
+
+      {items.length === 0 && (
+        <p className="profile-empty">
+          {view === 'archived' ? 'Aucune archive pour ce filtre.' : 'Aucune demande pour le moment.'}
+        </p>
+      )}
+
+      <div className="demandes-list">
+        {items.map((lead) => (
+          <article
+            key={lead.id}
+            className={`demande-card demande-card--styled${lead.statut === 'archivé' ? ' demande-card--archived' : ''}`}
+          >
+            <div className="demande-card__header">
+              <h3 className="demande-card__name">{esc(lead.nom)}</h3>
+              <div className="demande-card__badges">
+                <span className="badge badge-a">{leadTypeLabel(lead.type_demande)}</span>
+                <span className={`badge ${lead.assigne_a ? 'badge-x' : 'badge-a'}`}>
+                  {lead.assigne_a
+                    ? 'Assignée et archivée'
+                    : (lead.statut === 'nouveau' ? 'Nouveau' : 'À assigner')}
+                </span>
+              </div>
+            </div>
+
+            <p className="demande-card__hint demande-card__hint--meta">
+              Reçue le {new Date(lead.created_at).toLocaleString('fr-CA')}
+            </p>
+
+            <LeadDetails lead={lead} />
+
+            {lead.ref_agent_nom && isAdmin && (
+              <p className="demande-card__hint">
+                Suggestion référence : {esc(lead.ref_agent_nom)}
+              </p>
+            )}
+            {lead.ref_agent_id && !lead.ref_agent_nom && isAdmin && (
+              <p className="demande-card__hint">
+                Suggestion référence : agent {lead.ref_agent_id.slice(0, 8)}…
+              </p>
+            )}
+
+            {lead.statut === 'archivé' && lead.assigne_nom && isAdmin && (
+              <p className="demande-card__hint">
+                Assignée à {esc(lead.assigne_nom)}
+                {lead.archived_at && ` · ${new Date(lead.archived_at).toLocaleDateString('fr-CA')}`}
+                {lead.traitement_statut && ` · ${traitementStatutLabel(lead.traitement_statut)}`}
+              </p>
+            )}
+
+            {lead.statut === 'archivé' && !isAdmin && view === 'archived' && lead.traitement_statut && (
+              <p className="demande-card__hint">
+                Statut : {traitementStatutLabel(lead.traitement_statut)}
+                {lead.last_agent_update_at
+                  ? ` · Classé le ${new Date(lead.last_agent_update_at).toLocaleDateString('fr-CA')}`
+                  : ''}
+              </p>
+            )}
+
+            {lead.statut === 'archivé' && !lead.assigne_a && isAdmin && view === 'archived' && (
+              <p className="demande-card__hint demande-card__hint--warning">
+                Aucun agent assigné — cette demande n’apparaît pas dans les demandes d’un agent.
+              </p>
+            )}
+
+            {isAdmin && !lead.assigne_a && (
+              <LeadAssignBlock lead={lead} agents={activeAgents} onAssigned={invalidateAfterAssign} />
+            )}
+
+            {!isAdmin && lead.assigne_a && view === 'active' && (
+              <LeadProgressControl
+                lead={lead}
+                onUpdated={() => {
                   void refetch();
                   void queryClient.invalidateQueries({ queryKey: ['leads-badge'] });
                 }}
-                style={{ flex: 1 }}
-              >
-                <option value="">Assigner à...</option>
-                {(agents ?? []).filter((a) => a.actif !== false).map((a) => (
-                  <option key={a.id} value={a.id}>{a.nom}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {!isAdmin && lead.assigne_a && (
-            <select
-              value={lead.traitement_statut ?? 'assigné'}
-              onChange={async (e) => {
-                await api.patch(`/api/leads/${lead.id}/progress`, { traitementStatut: e.target.value });
-                void refetch();
-              }}
-              style={{ marginTop: 10, width: '100%' }}
-            >
-              <option value="assigné">Assigné</option>
-              <option value="contacté">Contacté</option>
-              <option value="réglé">Réglé</option>
-            </select>
-          )}
+              />
+            )}
+          </article>
+        ))}
+      </div>
+
+      {hasNextPage && (
+        <div className="demandes-load-more">
+          <button
+            type="button"
+            className="profile-btn profile-btn--ghost"
+            disabled={isFetchingNextPage}
+            onClick={() => void fetchNextPage()}
+          >
+            {isFetchingNextPage ? 'Chargement…' : 'Charger plus'}
+          </button>
         </div>
-      ))}
+      )}
     </div>
   );
 }

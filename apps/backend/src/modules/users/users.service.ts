@@ -1,4 +1,3 @@
-import { createUserSchema, updateUserSchema } from '@fast-rental/shared';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { emailService } from '../email/email.service.js';
 import { logActivity } from '../activity/activity.service.js';
@@ -13,6 +12,7 @@ export async function listUsers() {
 export async function createUser(input: {
   nom: string;
   email: string;
+  telephone?: string;
   password: string;
   role: 'admin' | 'agent';
 }, actorId: string, actorNom: string) {
@@ -24,12 +24,15 @@ export async function createUser(input: {
   });
   if (error) throw error;
 
+  const telephone = input.telephone?.trim() || null;
+
   const { data: profile, error: profileError } = await supabaseAdmin
     .from('agents')
     .upsert({
       id: created.user.id,
       email: input.email,
       nom: input.nom,
+      telephone,
       role: input.role,
       actif: true,
       must_change_password: true,

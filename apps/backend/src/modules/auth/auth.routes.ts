@@ -26,6 +26,7 @@ router.patch(
     const profile = res.locals.profile as { nom: string };
     const data = await updateProfile(user.id, {
       nom: req.body.nom,
+      telephone: req.body.telephone,
       profilePhotoMediaId: req.body.profilePhotoMediaId,
     });
     res.json({ data });

@@ -71,7 +71,6 @@ describe('email service', () => {
     emailService.notifyLeadAssignedAgent('agent@test.com', {
       agentNom: 'Marie',
       lead: { nom: 'Jean' },
-      deleteAfter: '2030-01-01',
     });
     await new Promise((r) => setTimeout(r, 10));
     expect(logger.info).toHaveBeenCalled();

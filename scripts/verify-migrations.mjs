@@ -43,6 +43,20 @@ if (viewErr) {
   console.log('✓ listing_media_counts view');
 }
 
+const { error: assignRpcErr } = await db.rpc('assign_demande_client', {
+  p_lead_id: '00000000-0000-4000-8000-000000000099',
+  p_agent_id: '00000000-0000-4000-8000-000000000099',
+});
+if (!assignRpcErr) {
+  console.error('✗ assign_demande_client RPC: expected error for missing rows, got success');
+  failed++;
+} else if (/could not find the function/i.test(assignRpcErr.message)) {
+  console.error(`✗ assign_demande_client RPC missing — run: npm run db:push (${assignRpcErr.message})`);
+  failed++;
+} else {
+  console.log('✓ assign_demande_client RPC');
+}
+
 if (failed) {
   console.error(`\n${failed} check(s) failed. Run: npm run db:push`);
   process.exit(1);

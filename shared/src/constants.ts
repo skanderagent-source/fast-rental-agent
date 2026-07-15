@@ -1,6 +1,10 @@
 export const LISTING_STATUSES = ['Available', 'On Hold', 'Not Available', 'In Reno', 'Rented'] as const;
 export const LEAD_STATUSES = ['nouveau', 'archivé'] as const;
-export const TRAITEMENT_STATUTS = ['assigné', 'contacté', 'réglé'] as const;
+export const TRAITEMENT_STATUTS = ['assigné', 'contacté', 'réglé', 'refusé'] as const;
+/** Agent “Mes demandes” active queue — not yet closed by the agent. */
+export const AGENT_ACTIVE_TRAITEMENT_STATUTS = ['assigné', 'contacté'] as const;
+/** Agent personal archive — customer outcome finalized. */
+export const AGENT_ARCHIVED_TRAITEMENT_STATUTS = ['réglé', 'refusé'] as const;
 export const USER_ROLES = ['admin', 'agent'] as const;
 export const MEDIA_STATUSES = ['pending', 'approved', 'rejected'] as const;
 export const MEDIA_TYPES = ['image', 'video'] as const;
@@ -8,6 +12,7 @@ export const LISTING_SOURCES = ['fast_rental', 'orcha', 'Fast Rental', 'Orcha', 
 
 export const MAX_IMAGES_PER_LISTING = 10;
 export const MAX_VIDEOS_PER_LISTING = 1;
+export const MAX_VIDEO_DURATION_SECONDS = 62;
 export const MAX_IMAGE_SIZE_MB = 15;
 export const MAX_VIDEO_SIZE_MB = 250;
 export const MAX_MAP_LISTINGS = 5000;

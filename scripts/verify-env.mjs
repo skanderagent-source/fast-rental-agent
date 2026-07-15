@@ -32,9 +32,9 @@ const backendRequired = [
   'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET',
   'R2_SIGNED_UPLOAD_EXPIRES_SECONDS', 'R2_SIGNED_DOWNLOAD_EXPIRES_SECONDS',
   'GOOGLE_SHEET_FAST_RENTAL_ID',
-  // 'GOOGLE_SHEET_ORCHA_ID', 'GOOGLE_SHEET_ORCHA_GID',
+  'GOOGLE_SHEET_ORCHA_ID',
   'EMAIL_ENABLED', 'GEOCODING_USER_AGENT', 'GEOCODING_BASE_URL',
-  'CRON_SHEET_SYNC', 'CRON_ARCHIVE_DELETE', 'CRON_STALE_MEDIA_CLEANUP',
+  'CRON_SHEET_SYNC', 'CRON_STALE_MEDIA_CLEANUP',
   'RATE_LIMIT_PUBLIC_WINDOW_MS', 'RATE_LIMIT_PUBLIC_MAX',
 ];
 
@@ -48,6 +48,15 @@ if (!backendEnv) {
   for (const key of backendRequired) {
     if (!backendEnv[key]) errors.push(`apps/backend/.env missing ${key}`);
   }
+  if (backendEnv.PORT === '4001') {
+    errors.push('apps/backend/.env PORT=4001 is Union Rental — use PORT=4000 for Fast Rental');
+  }
+  if (backendEnv.PUBLIC_API_BASE_URL?.includes(':4001')) {
+    errors.push('apps/backend/.env PUBLIC_API_BASE_URL must point to :4000, not :4001');
+  }
+  if (backendEnv.FRONTEND_ORIGIN?.includes(':5174')) {
+    errors.push('apps/backend/.env FRONTEND_ORIGIN must be :5173 (Fast Rental), not :5174 (Union Rental)');
+  }
 }
 
 if (!frontendEnv) {
@@ -55,6 +64,9 @@ if (!frontendEnv) {
 } else {
   for (const key of frontendRequired) {
     if (!frontendEnv[key]) errors.push(`apps/frontend/.env missing ${key}`);
+  }
+  if (frontendEnv.VITE_API_BASE_URL?.includes(':4001')) {
+    errors.push('apps/frontend/.env VITE_API_BASE_URL must point to Fast Rental :4000, not Union Rental :4001');
   }
 }
 

@@ -3,6 +3,7 @@ import {
   IMAGE_MIME_TYPES,
   LISTING_STATUSES,
   MAX_IMAGE_SIZE_MB,
+  MAX_VIDEO_DURATION_SECONDS,
   MAX_VIDEO_SIZE_MB,
   TRAITEMENT_STATUTS,
   USER_ROLES,
@@ -41,6 +42,7 @@ export const createCommentSchema = z.object({
 export const createUserSchema = z.object({
   nom: z.string().min(1),
   email: z.string().email(),
+  telephone: z.union([z.string().trim().min(6).max(30), z.literal('')]).optional(),
   password: z.string().min(6),
   role: z.enum(USER_ROLES),
 });
@@ -56,6 +58,25 @@ export const requestMediaUploadSchema = z.object({
   mimeType: z.string().min(1),
   sizeBytes: z.coerce.number().positive(),
   type: z.enum(['image', 'video']),
+  durationSeconds: z.coerce.number().positive().optional(),
+}).superRefine((data, ctx) => {
+  if (data.type !== 'video') return;
+  if (data.durationSeconds == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Durée vidéo requise',
+      path: ['durationSeconds'],
+    });
+    return;
+  }
+  const durationError = validateVideoDuration(data.durationSeconds);
+  if (durationError) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: durationError,
+      path: ['durationSeconds'],
+    });
+  }
 });
 
 export const approveMediaSchema = z.object({
@@ -72,6 +93,7 @@ export const reorderListingMediaSchema = z.object({
 
 export const updateProfileSchema = z.object({
   nom: z.string().min(1).optional(),
+  telephone: z.string().trim().min(6).max(30).nullable().optional(),
   profilePhotoMediaId: z.string().uuid().nullable().optional(),
 });
 
@@ -105,6 +127,18 @@ export const leadsQuerySchema = z.object({
     .union([z.literal('true'), z.literal('false')])
     .optional()
     .transform((v) => v === 'true'),
+  assignedTo: z.preprocess(
+    (value) => (value === '' || value === undefined ? undefined : value),
+    z.string().uuid().optional(),
+  ),
+  archivedFrom: z.preprocess(
+    (value) => (value === '' || value === undefined ? undefined : value),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  ),
+  archivedTo: z.preprocess(
+    (value) => (value === '' || value === undefined ? undefined : value),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  ),
   page: z.coerce.number().min(1).default(1),
   pageSize: z.coerce.number().min(1).max(100).default(50),
 });
@@ -124,6 +158,16 @@ export function validateMediaMime(type: 'image' | 'video', mimeType: string, siz
     if (sizeBytes > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
       return `Vidéo trop grande (max ${MAX_VIDEO_SIZE_MB} Mo)`;
     }
+  }
+  return null;
+}
+
+export function validateVideoDuration(durationSeconds: number) {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return 'Durée vidéo invalide';
+  }
+  if (durationSeconds > MAX_VIDEO_DURATION_SECONDS) {
+    return `Vidéo trop longue (max ${MAX_VIDEO_DURATION_SECONDS} secondes)`;
   }
   return null;
 }

@@ -39,21 +39,16 @@ export function leadAssignedAgent(input: {
   agentNom: string;
   lead: LeadLike;
   listingAdresse?: string | null;
-  deleteAfter?: string | null;
 }): EmailContent {
   const subject = `Nouvelle demande assignée — ${input.lead.nom}`;
-  const deleteLine = input.deleteAfter
-    ? `Cette demande sera supprimée automatiquement le ${new Date(input.deleteAfter).toLocaleDateString('fr-CA')}.`
-    : '';
   const link = frontendUrl('/app/dashboard');
   const text = [
     `Bonjour ${input.agentNom},`,
     ...leadFieldsText(input.lead).split('\n').filter(Boolean),
     input.listingAdresse ? `Logement: ${input.listingAdresse}` : '',
-    deleteLine,
     `Tableau de bord: ${link}`,
   ].filter(Boolean).join('\n');
-  const html = `<p>Bonjour ${escapeHtml(input.agentNom)},</p><p>${escapeHtml(input.lead.nom)}</p>${input.listingAdresse ? `<p>Logement: ${escapeHtml(input.listingAdresse)}</p>` : ''}${deleteLine ? `<p>${escapeHtml(deleteLine)}</p>` : ''}<p><a href="${escapeHtml(link)}">Ouvrir mon tableau de bord</a></p>`;
+  const html = `<p>Bonjour ${escapeHtml(input.agentNom)},</p><p>${escapeHtml(input.lead.nom)}</p>${input.listingAdresse ? `<p>Logement: ${escapeHtml(input.listingAdresse)}</p>` : ''}<p><a href="${escapeHtml(link)}">Ouvrir mon tableau de bord</a></p>`;
   return { subject, html, text };
 }
 

@@ -10,11 +10,22 @@ const boolFromEnv = z
   .union([z.literal('true'), z.literal('false')])
   .transform((v) => v === 'true');
 
+const UNION_RENTAL_PORTS = {
+  api: 4001,
+  web: 5174,
+} as const;
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.coerce.number().default(4000),
+  PORT: z.coerce.number().default(4000).refine(
+    (port) => port !== UNION_RENTAL_PORTS.api,
+    `PORT must not be ${UNION_RENTAL_PORTS.api} (reserved for Union Rental)`,
+  ),
   PUBLIC_API_BASE_URL: z.string().url(),
-  FRONTEND_ORIGIN: z.string().min(1),
+  FRONTEND_ORIGIN: z.string().min(1).refine(
+    (origin) => !origin.includes(`:${UNION_RENTAL_PORTS.web}`),
+    `FRONTEND_ORIGIN must not use :${UNION_RENTAL_PORTS.web} (reserved for Union Rental)`,
+  ),
   SUPABASE_URL: z.string().url(),
   SUPABASE_ANON_KEY: z.string().min(1),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
@@ -28,9 +39,8 @@ const schema = z.object({
   GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().optional().default(''),
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z.string().optional().default(''),
   GOOGLE_SHEET_FAST_RENTAL_ID: z.string().min(1),
-  // Re-enable when Orcha sheet sync is needed:
-  // GOOGLE_SHEET_ORCHA_ID: z.string().min(1),
-  // GOOGLE_SHEET_ORCHA_GID: z.string().min(1),
+  GOOGLE_SHEET_ORCHA_ID: z.string().min(1),
+  GOOGLE_SHEET_ORCHA_GID: z.string().optional().default(''),
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_ENABLED: boolFromEnv.default('false'),
   EMAIL_FROM: z.string().optional().default(''),
@@ -40,7 +50,6 @@ const schema = z.object({
   GEOCODING_BASE_URL: z.string().url(),
   RUN_SHEET_SYNC_ON_STARTUP: boolFromEnv.default('false'),
   CRON_SHEET_SYNC: z.string().default('0 */6 * * *'),
-  CRON_ARCHIVE_DELETE: z.string().default('0 3 * * *'),
   CRON_STALE_MEDIA_CLEANUP: z.string().default('30 3 * * *'),
   RATE_LIMIT_PUBLIC_WINDOW_MS: z.coerce.number().default(60000),
   RATE_LIMIT_PUBLIC_MAX: z.coerce.number().default(30),

@@ -18,6 +18,7 @@ export type AgentProfile = {
   id: string;
   email: string;
   nom: string;
+  telephone: string | null;
   role: UserRole;
   actif: boolean;
   must_change_password: boolean;
@@ -122,6 +123,11 @@ export type Lead = {
   updated_at: string;
 };
 
+export type LeadListItem = Lead & {
+  listing_adresse?: string | null;
+  ref_agent_nom?: string | null;
+};
+
 export type Comment = {
   id: string;
   logement_id: string;
@@ -175,6 +181,7 @@ export type AgentStats = {
   assignedLeads: number;
   contactedLeads: number;
   resolvedLeads: number;
+  refusedLeads: number;
   rentalCount: number;
   rentalRevenueTotal: number;
   mediaUploaded: number;

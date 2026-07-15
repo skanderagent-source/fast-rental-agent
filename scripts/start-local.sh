@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Start Fast Rental locally: setup checks + backend + frontend dev servers.
+# Does NOT start Union Rental (:4001 API, :5174 web) — run that from its own repo.
 #
 # Usage:
 #   npm run start:local
@@ -133,8 +134,9 @@ fi
 step "6/7" "Starting dev servers"
 echo "  Backend  → http://localhost:4000"
 echo "  Frontend → http://localhost:5173"
+echo "  (Union Rental is separate — :4001 API, :5174 web; not started by this script)"
 
-bash scripts/with-node.sh npm run dev --workspace apps/backend > /tmp/fast-rental-backend.log 2>&1 &
+bash scripts/with-node.sh env PORT=4000 npm run dev --workspace apps/backend > /tmp/fast-rental-backend.log 2>&1 &
 BACKEND_PID=$!
 
 bash scripts/with-node.sh npm run dev --workspace apps/frontend > /tmp/fast-rental-frontend.log 2>&1 &
@@ -147,7 +149,7 @@ if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
 fi
 if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
   fail "6/7 frontend dev server" \
-    "Frontend process exited immediately.\nDebug:\n  - Log: tail -50 /tmp/fast-rental-frontend.log\n  - Common fixes: port 5173 in use (lsof -i :5173)\n  - Manual: npm run dev:frontend"
+    "Frontend process exited immediately.\nDebug:\n  - Log: tail -50 /tmp/fast-rental-frontend.log\n  - Common fixes: port 5173 in use (lsof -i :5173)\n  - Union Rental uses :5174 — start it from the Union Rental repo, not here\n  - Manual: npm run dev:frontend"
 fi
 
 # ── 7. Health check ──────────────────────────────────────────────────────────

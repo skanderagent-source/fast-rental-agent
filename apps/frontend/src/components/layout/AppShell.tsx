@@ -12,12 +12,16 @@ const tabs = [
 
 type LeadsBadgeResponse = { summary: { badgeCount: number } };
 
+function tabClassName({ isActive }: { isActive: boolean }) {
+  return `app-tab${isActive ? ' app-tab--active' : ''}`;
+}
+
 export function AppShell() {
   const { profile, isAdmin, signOut } = useAuth();
   const { data: leadsBadge } = useQuery({
-    queryKey: ['leads-badge'],
+    queryKey: ['leads-badge', profile?.id],
     queryFn: () => api.get<LeadsBadgeResponse>('/api/leads?includeArchived=false'),
-    enabled: isAdmin,
+    enabled: !!profile,
     refetchInterval: 60_000,
   });
   const badgeCount = leadsBadge?.summary.badgeCount ?? 0;
@@ -36,27 +40,25 @@ export function AppShell() {
           <button className="btn-secondary" style={{ padding: '5px 10px', fontSize: 11 }} onClick={() => void signOut()}>Quitter</button>
         </div>
       </header>
-      <nav className="tabs" style={{ display: 'flex', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+      <nav className="tabs app-tabs">
         {tabs.map((tab) => (
-          <NavLink key={tab.to} to={tab.to} style={({ isActive }) => ({
-            flex: 1, padding: '10px 4px', fontSize: 11, textAlign: 'center', textDecoration: 'none',
-            color: isActive ? 'var(--blue)' : 'var(--text3)',
-            borderBottom: isActive ? '2px solid var(--blue)' : '2px solid transparent',
-            position: 'relative',
-          })}>
-            {tab.label}
-            {tab.badgeKey === 'leads' && isAdmin && badgeCount > 0 && (
-              <span style={{
-                marginLeft: 4, background: 'var(--red)', color: '#fff', borderRadius: 10,
-                padding: '1px 6px', fontSize: 10, fontWeight: 700,
-              }}>{badgeCount}</span>
-            )}
+          <NavLink key={tab.to} to={tab.to} className={tabClassName}>
+            <span className="app-tab__label">
+              {tab.label}
+              {tab.badgeKey === 'leads' && badgeCount > 0 && (
+                <span className="app-tab__badge">{badgeCount}</span>
+              )}
+            </span>
           </NavLink>
         ))}
         {isAdmin && (
           <>
-            <NavLink to="admin/listings/new" style={({ isActive }) => ({ flex: 1, padding: '10px 4px', fontSize: 11, textAlign: 'center', textDecoration: 'none', color: isActive ? 'var(--blue)' : 'var(--text3)', borderBottom: isActive ? '2px solid var(--blue)' : '2px solid transparent' })}>Ajouter</NavLink>
-            <NavLink to="admin" style={({ isActive }) => ({ flex: 1, padding: '10px 4px', fontSize: 11, textAlign: 'center', textDecoration: 'none', color: isActive ? 'var(--blue)' : 'var(--text3)', borderBottom: isActive ? '2px solid var(--blue)' : '2px solid transparent' })}>Admin</NavLink>
+            <NavLink to="admin/listings/new" className={tabClassName}>
+              <span className="app-tab__label">Ajouter</span>
+            </NavLink>
+            <NavLink to="admin" end className={tabClassName}>
+              <span className="app-tab__label">Gestion</span>
+            </NavLink>
           </>
         )}
       </nav>

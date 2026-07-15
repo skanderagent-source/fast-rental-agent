@@ -20,9 +20,13 @@ export async function getMe(userId: string, userEmail: string) {
   };
 }
 
-export async function updateProfile(userId: string, input: { nom?: string; profilePhotoMediaId?: string | null }) {
+export async function updateProfile(
+  userId: string,
+  input: { nom?: string; telephone?: string | null; profilePhotoMediaId?: string | null },
+) {
   const updates: Record<string, unknown> = {};
   if (input.nom !== undefined) updates.nom = input.nom;
+  if (input.telephone !== undefined) updates.telephone = input.telephone;
   if (input.profilePhotoMediaId !== undefined) updates.profile_photo_media_id = input.profilePhotoMediaId;
   const { data, error } = await supabaseAdmin
     .from('agents')

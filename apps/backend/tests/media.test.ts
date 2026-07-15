@@ -53,6 +53,21 @@ describe('media API', () => {
     expect(res.status).toBe(409);
   });
 
+  it('rejects videos longer than the max duration', async () => {
+    authAs(mockGetUser, mockFrom, { id: 'u1', role: 'agent' });
+    const res = await request(app)
+      .post('/api/listings/00000000-0000-4000-8000-000000000001/media/upload-url')
+      .set('Authorization', 'Bearer t')
+      .send({
+        filename: 'clip.mp4',
+        mimeType: 'video/mp4',
+        sizeBytes: 1000,
+        type: 'video',
+        durationSeconds: 90,
+      });
+    expect(res.status).toBe(400);
+  });
+
   it('creates pending media upload url for agent', async () => {
     mockRpc.mockResolvedValue({ data: 'media-1', error: null });
     authAs(mockGetUser, mockFrom, { id: 'u1', role: 'agent' });

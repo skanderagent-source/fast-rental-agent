@@ -1,8 +1,10 @@
+import type { LeadListItem, TraitementStatut } from '@fast-rental/shared';
+import { AGENT_ARCHIVED_TRAITEMENT_STATUTS } from '@fast-rental/shared';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { getPagination } from '../../utils/pagination.js';
 import { emailService } from '../email/email.service.js';
 import { logActivity } from '../activity/activity.service.js';
-import { forbidden, notFound } from '../../utils/httpErrors.js';
+import { conflict, forbidden, notFound } from '../../utils/httpErrors.js';
 
 async function fetchListingAdresse(listingId: string | null | undefined) {
   if (!listingId) return null;
@@ -10,19 +12,110 @@ async function fetchListingAdresse(listingId: string | null | undefined) {
   return data?.adresse ?? null;
 }
 
+async function enrichLeads(items: LeadListItem[]): Promise<LeadListItem[]> {
+  if (items.length === 0) return items;
+
+  const listingIds = [...new Set(items.map((lead) => lead.listing_id).filter(Boolean))] as string[];
+  const refAgentIds = [...new Set(items.map((lead) => lead.ref_agent_id).filter(Boolean))] as string[];
+
+  const listingById = new Map<string, string>();
+  if (listingIds.length > 0) {
+    const { data } = await supabaseAdmin.from('logements').select('id,adresse').in('id', listingIds);
+    for (const listing of data ?? []) {
+      listingById.set(listing.id, listing.adresse);
+    }
+  }
+
+  const agentById = new Map<string, string>();
+  if (refAgentIds.length > 0) {
+    const { data } = await supabaseAdmin.from('agents').select('id,nom').in('id', refAgentIds);
+    for (const agent of data ?? []) {
+      agentById.set(agent.id, agent.nom);
+    }
+  }
+
+  return items.map((lead) => ({
+    ...lead,
+    listing_adresse: lead.listing_id ? listingById.get(lead.listing_id) ?? null : null,
+    ref_agent_nom: lead.ref_agent_id ? agentById.get(lead.ref_agent_id) ?? null : null,
+  }));
+}
+
+function applyAgentAssignedLeadFilters<T extends { eq: (column: string, value: string) => T }>(
+  query: T,
+  agentId: string,
+) {
+  return query.eq('assigne_a', agentId);
+}
+
+function applyArchivedFilters<T extends {
+  eq: (column: string, value: string) => T;
+  gte: (column: string, value: string) => T;
+  lte: (column: string, value: string) => T;
+}>(
+  query: T,
+  filters: { assignedTo?: string; archivedFrom?: string; archivedTo?: string },
+  dateColumn: 'archived_at' | 'last_agent_update_at' = 'archived_at',
+) {
+  let next = query;
+  if (filters.assignedTo) next = next.eq('assigne_a', filters.assignedTo);
+  if (filters.archivedFrom) {
+    next = next.gte(dateColumn, new Date(`${filters.archivedFrom}T00:00:00`).toISOString());
+  }
+  if (filters.archivedTo) {
+    next = next.lte(dateColumn, new Date(`${filters.archivedTo}T23:59:59.999`).toISOString());
+  }
+  return next;
+}
+
 export async function listLeads(
   profile: { id: string; role: string },
-  query: { includeArchived?: boolean; page: number; pageSize: number },
+  query: {
+    includeArchived?: boolean;
+    assignedTo?: string;
+    archivedFrom?: string;
+    archivedTo?: string;
+    page: number;
+    pageSize: number;
+  },
 ) {
   const { from, to } = getPagination(query.page, query.pageSize);
-  let dbQuery = supabaseAdmin.from('demandes_clients').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+  let dbQuery = supabaseAdmin.from('demandes_clients').select('*', { count: 'exact' });
 
   if (profile.role === 'admin') {
-    if (!query.includeArchived) dbQuery = dbQuery.eq('statut', 'nouveau');
+    if (query.includeArchived) {
+      dbQuery = applyArchivedFilters(
+        dbQuery
+          .or('assigne_a.not.is.null')
+          .order('archived_at', { ascending: false, nullsFirst: false }),
+        {
+          assignedTo: query.assignedTo,
+          archivedFrom: query.archivedFrom,
+          archivedTo: query.archivedTo,
+        },
+      );
+    } else {
+      // Unassigned queue — includes legacy rows archived without an agent.
+      dbQuery = dbQuery
+        .is('assigne_a', null)
+        .order('created_at', { ascending: false });
+    }
+  } else if (query.includeArchived) {
+    dbQuery = applyArchivedFilters(
+      dbQuery
+        .eq('assigne_a', profile.id)
+        .in('traitement_statut', [...AGENT_ARCHIVED_TRAITEMENT_STATUTS])
+        .order('last_agent_update_at', { ascending: false, nullsFirst: false }),
+      {
+        archivedFrom: query.archivedFrom,
+        archivedTo: query.archivedTo,
+      },
+      'last_agent_update_at',
+    );
   } else {
-    dbQuery = dbQuery
-      .eq('assigne_a', profile.id)
-      .gt('delete_after', new Date().toISOString());
+    dbQuery = applyAgentAssignedLeadFilters(dbQuery, profile.id)
+      .or('traitement_statut.eq.assigné,traitement_statut.eq.contacté,traitement_statut.is.null')
+      .order('assigne_le', { ascending: false, nullsFirst: false });
   }
 
   const { data, error, count } = await dbQuery.range(from, to);
@@ -33,20 +126,19 @@ export async function listLeads(
     const { count: unassigned } = await supabaseAdmin
       .from('demandes_clients')
       .select('*', { count: 'exact', head: true })
-      .eq('statut', 'nouveau');
+      .is('assigne_a', null);
     badgeCount = unassigned ?? 0;
   } else {
     const { count: assigned } = await supabaseAdmin
       .from('demandes_clients')
       .select('*', { count: 'exact', head: true })
       .eq('assigne_a', profile.id)
-      .eq('traitement_statut', 'assigné')
-      .gt('delete_after', new Date().toISOString());
+      .eq('traitement_statut', 'assigné');
     badgeCount = assigned ?? 0;
   }
 
   return {
-    items: data ?? [],
+    items: await enrichLeads((data ?? []) as LeadListItem[]),
     page: query.page,
     pageSize: query.pageSize,
     total: count ?? 0,
@@ -59,28 +151,22 @@ export async function assignLead(leadId: string, agentId: string, adminId: strin
     .from('agents')
     .select('*')
     .eq('id', agentId)
-    .eq('actif', true)
     .single();
-  if (agentError || !agent) throw notFound('Agent introuvable');
+  if (agentError || !agent || agent.actif === false) throw notFound('Agent introuvable');
 
-  const now = new Date();
-  const deleteAfter = new Date(now.getTime() + 30 * 24 * 3600000).toISOString();
-  const { data, error } = await supabaseAdmin
-    .from('demandes_clients')
-    .update({
-      assigne_a: agentId,
-      assigne_nom: agent.nom,
-      assigne_le: now.toISOString(),
-      assignation_type: 'manual',
-      statut: 'archivé',
-      traitement_statut: 'assigné',
-      archived_at: now.toISOString(),
-      delete_after: deleteAfter,
-    })
-    .eq('id', leadId)
-    .select('*')
-    .single();
+  // Assignment must use assign_demande_client RPC — not a direct .update().
+  // The backend writes with the service role (no auth.uid()), while legacy Orcha
+  // trigger protect_demande_fields() only trusts is_admin() or this RPC path.
+  // Admin authorization is enforced above in leads.routes (requireRole('admin')).
+  const { data, error } = await supabaseAdmin.rpc('assign_demande_client', {
+    p_lead_id: leadId,
+    p_agent_id: agentId,
+    p_assignation_type: 'manual',
+  });
   if (error) throw error;
+  if (!data || (data as LeadListItem).assigne_a !== agentId) {
+    throw conflict('Assignation non enregistrée — vérifiez que l’agent existe dans Supabase');
+  }
 
   await logActivity({
     agentId: adminId,
@@ -104,7 +190,6 @@ export async function assignLead(leadId: string, agentId: string, adminId: strin
         type_demande: data.type_demande,
       },
       listingAdresse,
-      deleteAfter: data.delete_after,
     });
   }
   return data;
@@ -112,7 +197,7 @@ export async function assignLead(leadId: string, agentId: string, adminId: strin
 
 export async function updateLeadProgress(
   leadId: string,
-  traitementStatut: 'assigné' | 'contacté' | 'réglé',
+  traitementStatut: TraitementStatut,
   profile: { id: string; role: string },
 ) {
   const { data: lead, error: leadError } = await supabaseAdmin
@@ -148,8 +233,8 @@ export async function getAgentCalls(agentId: string) {
     .from('demandes_clients')
     .select('*')
     .eq('assigne_a', agentId)
-    .gt('delete_after', new Date().toISOString())
-    .order('assigne_le', { ascending: false });
+    .or('traitement_statut.eq.assigné,traitement_statut.eq.contacté,traitement_statut.is.null')
+    .order('assigne_le', { ascending: false, nullsFirst: false });
   if (error) throw error;
-  return data ?? [];
+  return enrichLeads((data ?? []) as LeadListItem[]);
 }

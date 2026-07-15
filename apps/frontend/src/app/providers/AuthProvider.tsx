@@ -8,6 +8,7 @@ export type Profile = {
   id: string;
   email: string;
   nom: string;
+  telephone: string | null;
   role: 'admin' | 'agent';
   actif: boolean;
   must_change_password: boolean;

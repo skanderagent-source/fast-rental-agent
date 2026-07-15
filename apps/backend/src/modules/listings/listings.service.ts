@@ -4,6 +4,7 @@ import {
   MAX_VIDEOS_PER_LISTING,
   type MapListing,
   validateMediaMime,
+  validateVideoDuration,
 } from '@fast-rental/shared';
 import { randomUUID } from 'node:crypto';
 import { env } from '../../config/env.js';
@@ -21,7 +22,7 @@ import {
 import { logActivity } from '../activity/activity.service.js';
 import { emailService } from '../email/email.service.js';
 import { geocodeListing } from './listings.geocode.js';
-import { sortListingsByPhotos } from './listings.repository.js';
+import { sortListingsByMedia } from './listings.repository.js';
 import { conflict, forbidden, notFound } from '../../utils/httpErrors.js';
 
 const PUBLIC_FIELDS = [
@@ -77,7 +78,7 @@ export async function listListings(query: {
   const { data: countRows } = await supabaseAdmin.from('listing_media_counts').select('*');
   const countMap = new Map((countRows ?? []).map((c) => [c.listing_id, c]));
 
-  const sorted = sortListingsByPhotos(
+  const sorted = sortListingsByMedia(
     (allRows ?? []).map((row) => {
       const counts = countMap.get(row.id);
       return {
@@ -310,10 +311,21 @@ export async function listListingMedia(listingId: string, approvedOnly = false) 
 export async function requestMediaUpload(
   listingId: string,
   userId: string,
-  input: { filename: string; mimeType: string; sizeBytes: number; type: 'image' | 'video' },
+  input: {
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    type: 'image' | 'video';
+    durationSeconds?: number;
+  },
 ) {
   const mimeError = validateMediaMime(input.type, input.mimeType, input.sizeBytes);
   if (mimeError) throw Object.assign(new Error(mimeError), { status: 400, code: 'VALIDATION_ERROR' });
+
+  if (input.type === 'video') {
+    const durationError = validateVideoDuration(input.durationSeconds ?? Number.NaN);
+    if (durationError) throw Object.assign(new Error(durationError), { status: 400, code: 'VALIDATION_ERROR' });
+  }
 
   const objectKey = `listings/${listingId}/${randomUUID()}/${safeFilename(input.filename)}`;
   const { data: mediaId, error } = await supabaseAdmin.rpc('reserve_listing_media_upload', {
@@ -331,6 +343,14 @@ export async function requestMediaUpload(
   if (error) {
     if (error.message.includes('limit')) throw conflict(error.message);
     throw error;
+  }
+
+  if (input.type === 'video' && input.durationSeconds != null) {
+    const { error: durationError } = await supabaseAdmin
+      .from('listing_media')
+      .update({ duration_seconds: input.durationSeconds })
+      .eq('id', mediaId);
+    if (durationError) throw durationError;
   }
   const uploadUrl = await createUploadUrl(objectKey, input.mimeType);
   return {

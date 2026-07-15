@@ -26,10 +26,20 @@ const requiredSnippets = {
   '0005_backfill_assigned_leads.sql': ['delete_after'],
   '0006_lockdown_legacy_policies.sql': ['logements'],
   '0007_sheet_import_columns.sql': ['locataire_nom', 'locataire_tel'],
+  '0018_assign_demande_client_rpc.sql': ['assign_demande_client'],
+  '0021_fix_protect_demande_fields.sql': ['protect_demande_fields', 'fast_rental.allow_demande_assign'],
+  '0022_tighten_demande_assignment_guards.sql': ['protect_agent_role', 'fast_rental.allow_demande_assign'],
 };
 
+const requiredFiles = [
+  ...expected,
+  '0018_assign_demande_client_rpc.sql',
+  '0021_fix_protect_demande_fields.sql',
+  '0022_tighten_demande_assignment_guards.sql',
+];
+
 let failed = 0;
-for (const file of expected) {
+for (const file of requiredFiles) {
   const full = path.join(dir, file);
   if (!fs.existsSync(full)) {
     console.error(`✗ missing ${file}`);

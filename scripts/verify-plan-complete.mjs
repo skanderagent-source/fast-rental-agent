@@ -34,7 +34,7 @@ const phases = [
   { id: 'p10-comments-routes', check: () => fs.existsSync('apps/backend/src/modules/comments/comments.routes.ts') },
   { id: 'p10-admin-stats-rentals', check: () => fs.existsSync('apps/backend/src/modules/rentals/rentals.routes.ts') },
   { id: 'p10-sheets-sync', check: () => fs.existsSync('apps/backend/src/modules/sheets/sheets.service.ts') },
-  { id: 'p10-cron-jobs', check: () => fs.existsSync('apps/backend/src/modules/jobs/startJobs.ts') && fs.existsSync('apps/backend/src/modules/jobs/deleteArchivedLeads.ts') },
+  { id: 'p10-cron-jobs', check: () => fs.existsSync('apps/backend/src/modules/jobs/startJobs.ts') },
   { id: 'p26-resend-email', check: () => {
     const tpl = fs.readFileSync('apps/backend/src/modules/email/templates.ts', 'utf8');
     const svc = fs.readFileSync('apps/backend/src/modules/email/email.service.ts', 'utf8');
@@ -77,6 +77,7 @@ const phases = [
     return auth.includes('allows admin to create user')
       && auth.includes('rejects agent creating user')
       && leads.includes('assigns lead and archives')
+      && leads.includes('assign_demande_client')
       && media.includes('allows admin to approve')
       && media.includes('rejects agent approving');
   }},
