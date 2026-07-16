@@ -1,18 +1,26 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  adminUserSchema,
   isValidReferralUsername,
   normalizeReferralUsername,
   REFERRAL_USERNAME_MAX_LENGTH,
   REFERRAL_USERNAME_MIN_LENGTH,
+  referralUsernameFromNom,
 } from '@fast-rental/shared';
-import { api, ApiError } from '../../lib/apiClient';
+import { api, ApiError, sensitiveApi } from '../../lib/apiClient';
+import { formatZodIssues, parseCreateUserPayload } from '../../lib/formValidation';
+import { parseApi } from '../../lib/parseApi';
+import { useSubmitLock, OfflineError } from '../../lib/useSubmitLock';
 import { useToast } from '../../components/common/ToastProvider';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { PasswordInput } from '../../components/common/PasswordInput';
+import { SanitizedInput } from '../../components/common/SanitizedField';
 
 import type { AgentStats } from '@fast-rental/shared';
+import type { z } from 'zod';
 
-type AdminUser = { id: string; nom: string; email: string; role: string; actif: boolean; referral_slug: string };
+type AdminUser = z.infer<typeof adminUserSchema>;
 
 const USERNAME_HINT = `Lettres et chiffres seulement (a-z, 0-9), ${REFERRAL_USERNAME_MIN_LENGTH}–${REFERRAL_USERNAME_MAX_LENGTH} caractères.`;
 
@@ -30,7 +38,10 @@ export function AdminPanel() {
   });
   const { data: users, refetch: refetchUsers } = useQuery({
     queryKey: ['admin-users'],
-    queryFn: () => api.get<AdminUser[]>('/api/users'),
+    queryFn: async () => {
+      const rows = await api.get<unknown[]>('/api/users');
+      return rows.map((row) => parseApi(adminUserSchema, row, 'Utilisateur admin'));
+    },
   });
   const { data: activity } = useQuery({
     queryKey: ['activity'],
@@ -53,6 +64,7 @@ export function AdminPanel() {
   const [newUsername, setNewUsername] = useState('');
   const [confirmUsername, setConfirmUsername] = useState('');
   const [pendingUsername, setPendingUsername] = useState('');
+  const { locked: creatingUser, run: runCreateUser } = useSubmitLock({ requireOnline: true });
 
   async function refreshUsers() {
     await Promise.all([refetchUsers(), refetchAgents()]);
@@ -99,7 +111,7 @@ export function AdminPanel() {
 
   function requestUsernameChange() {
     if (!usernameEditUser) return;
-    const current = normalizeReferralUsername(usernameEditUser.referral_slug);
+    const current = referralUsernameFromNom(usernameEditUser.nom) ?? '';
     const next = normalizeReferralUsername(newUsername);
     const confirm = normalizeReferralUsername(confirmUsername);
 
@@ -136,7 +148,7 @@ export function AdminPanel() {
 
   async function confirmDelete() {
     if (!deleteTarget) return;
-    await api.delete(`/api/users/${deleteTarget.id}`);
+    await sensitiveApi.delete(`/api/users/${deleteTarget.id}`, 'user.delete', deleteTarget.id);
     toast('Compte supprimé');
     cancelDelete();
     void refreshUsers();
@@ -144,7 +156,7 @@ export function AdminPanel() {
 
   async function confirmSuspend() {
     if (!suspendTarget) return;
-    await api.post(`/api/users/${suspendTarget.id}/deactivate`);
+    await sensitiveApi.post(`/api/users/${suspendTarget.id}/deactivate`, 'user.deactivate', suspendTarget.id);
     toast('Compte suspendu');
     cancelSuspend();
     void refreshUsers();
@@ -152,7 +164,7 @@ export function AdminPanel() {
 
   async function confirmReactivate() {
     if (!reactivateTarget) return;
-    await api.post(`/api/users/${reactivateTarget.id}/reactivate`);
+    await sensitiveApi.post(`/api/users/${reactivateTarget.id}/reactivate`, 'user.reactivate', reactivateTarget.id);
     toast('Compte réactivé');
     cancelReactivate();
     void refreshUsers();
@@ -174,25 +186,45 @@ export function AdminPanel() {
         <div className="admin-form-grid">
           <div className="form-field">
             <label htmlFor="new-user-nom">Nom</label>
-            <input id="new-user-nom" placeholder="Nom complet" value={newUser.nom} onChange={(e) => setNewUser({ ...newUser, nom: e.target.value })} />
+            <SanitizedInput
+              id="new-user-nom"
+              kind="personName"
+              maxLength={120}
+              placeholder="Nom complet"
+              value={newUser.nom}
+              onChange={(value) => setNewUser({ ...newUser, nom: value })}
+            />
           </div>
           <div className="form-field">
             <label htmlFor="new-user-email">Email</label>
-            <input id="new-user-email" placeholder="email@exemple.com" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
+            <SanitizedInput
+              id="new-user-email"
+              kind="email"
+              maxLength={320}
+              placeholder="email@exemple.com"
+              value={newUser.email}
+              onChange={(value) => setNewUser({ ...newUser, email: value })}
+            />
           </div>
           <div className="form-field">
             <label htmlFor="new-user-telephone">Téléphone</label>
-            <input
+            <SanitizedInput
               id="new-user-telephone"
-              type="tel"
-              placeholder="514-555-0100"
+              kind="phone"
+              maxLength={30}
+              placeholder="5145550100"
               value={newUser.telephone}
-              onChange={(e) => setNewUser({ ...newUser, telephone: e.target.value })}
+              onChange={(value) => setNewUser({ ...newUser, telephone: value })}
             />
           </div>
           <div className="form-field">
             <label htmlFor="new-user-password">Mot de passe temporaire</label>
-            <input id="new-user-password" type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
+            <PasswordInput
+              id="new-user-password"
+              value={newUser.password}
+              onChange={(value) => setNewUser({ ...newUser, password: value })}
+              autoComplete="new-password"
+            />
           </div>
           <div className="form-field">
             <label htmlFor="new-user-role">Rôle</label>
@@ -204,21 +236,26 @@ export function AdminPanel() {
           <button
             type="button"
             className="profile-btn profile-btn--primary admin-form-grid__submit"
-            onClick={async () => {
-              const payload = {
-                nom: newUser.nom,
-                email: newUser.email,
-                password: newUser.password,
-                role: newUser.role,
-                ...(newUser.telephone.trim() ? { telephone: newUser.telephone.trim() } : {}),
-              };
-              await api.post('/api/users', payload);
-              toast('✅ Compte créé');
-              setNewUser({ nom: '', email: '', telephone: '', password: '', role: 'agent' });
-              void refreshUsers();
-            }}
+            disabled={creatingUser}
+            onClick={() => void (async () => {
+              try {
+                await runCreateUser(async () => {
+                  const parsed = parseCreateUserPayload(newUser);
+                  if (!parsed.success) {
+                    toast(`⚠️ ${formatZodIssues(parsed.error.issues)}`);
+                    return;
+                  }
+                  await api.post('/api/users', parsed.data);
+                  toast('✅ Compte créé');
+                  setNewUser({ nom: '', email: '', telephone: '', password: '', role: 'agent' });
+                  void refreshUsers();
+                });
+              } catch (err) {
+                if (err instanceof OfflineError) toast(`⚠️ ${err.message}`);
+              }
+            })()}
           >
-            Créer le compte
+            {creatingUser ? 'Création…' : 'Créer le compte'}
           </button>
         </div>
       </section>
@@ -232,7 +269,7 @@ export function AdminPanel() {
                 <div>
                   <div className="profile-list-item__title">{u.nom}</div>
                   <div className="admin-user-row__email">{u.email}</div>
-                  <div className="admin-user-row__role">@{u.referral_slug}</div>
+                  <div className="admin-user-row__role">@{referralUsernameFromNom(u.nom) ?? u.nom}</div>
                   <div className="admin-user-row__role">{u.role === 'admin' ? 'Administrateur' : 'Agent'}</div>
                 </div>
                 <span className={`badge ${u.actif ? 'badge-d' : 'badge-n'}`}>{u.actif ? 'Actif' : 'Suspendu'}</span>
@@ -369,7 +406,6 @@ export function AdminPanel() {
               }>('/api/admin/sheets/preview');
               const lines = preview.stats.map((s) => `${s.tabName}: ${s.rowsValid}/${s.rowsSeen}`).join(' · ');
               toast(`Aperçu: ${preview.total} logements (${lines})`);
-              console.info('Sheet preview sample', preview.sample, preview.summary);
             }}
           >
             Aperçu (sans écriture)
@@ -379,11 +415,11 @@ export function AdminPanel() {
             className="profile-btn profile-btn--primary"
             onClick={async () => {
               if (!confirm('Importer / mettre à jour tous les logements depuis Google Sheets ?')) return;
-              const result = await api.post<{
+              const result = await sensitiveApi.post<{
                 rowsInserted: number;
                 rowsUpdated: number;
                 rowsErrored: number;
-              }>('/api/admin/sheets/import');
+              }>('/api/admin/sheets/import', 'sheets.import');
               toast(`✅ Import: ${result.rowsInserted} insérés, ${result.rowsUpdated} mis à jour`);
               void refetchSheets();
               void refetchStats();
@@ -397,7 +433,7 @@ export function AdminPanel() {
             className="profile-btn profile-btn--ghost"
             onClick={async () => {
               if (!confirm('Sync avec protection des champs modifiés manuellement dans l\'app ?')) return;
-              await api.post('/api/admin/sheets/sync');
+              await sensitiveApi.post('/api/admin/sheets/sync', 'sheets.sync');
               toast('✅ Sync terminée');
               void refetchSheets();
               void refetchStats();
@@ -496,7 +532,7 @@ export function AdminPanel() {
       />
       <ConfirmDialog
         open={usernameStep === 2}
-        message={`Changer le nom d'utilisateur de ${usernameEditUser?.referral_slug ?? ''} à ${pendingUsername}.`}
+        message={`Changer le nom d'utilisateur de ${referralUsernameFromNom(usernameEditUser?.nom ?? '') ?? usernameEditUser?.nom ?? ''} à ${pendingUsername}.`}
         confirmLabel="Confirmer"
         cancelLabel="Annuler"
         confirmTone="primary"

@@ -60,6 +60,7 @@ export type Listing = {
   approved_media_count?: number;
   approved_image_count?: number;
   pending_media_count?: number;
+  cover_image_url?: string;
 };
 
 export type MapListing = Pick<

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+*.map
 .env
 .env.*
 !.env.example
@@ -10,3 +11,5 @@ coverage/
 *.log
 apps/backend/.local-storage/
 backup_before_split.sql
+supabase/.temp/
+backups/

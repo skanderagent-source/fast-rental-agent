@@ -1,4 +1,7 @@
 import { useEffect } from 'react';
+import { useFocusTrap } from '../../lib/useFocusTrap';
+import { safeMediaSrc } from '../../lib/urlSafety';
+import { ModalPortal } from './ModalPortal';
 
 type MediaLightboxProps = {
   open: boolean;
@@ -9,6 +12,8 @@ type MediaLightboxProps = {
 };
 
 export function MediaLightbox({ open, url, type, alt, onClose }: MediaLightboxProps) {
+  const containerRef = useFocusTrap(open);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -18,17 +23,27 @@ export function MediaLightbox({ open, url, type, alt, onClose }: MediaLightboxPr
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  if (!open || !url) return null;
+  const safeUrl = safeMediaSrc(url);
+  if (!open || !safeUrl) return null;
 
   return (
-    <div className="media-lightbox-overlay" role="presentation" onClick={onClose}>
-      <div className="media-lightbox" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        {type === 'image' ? (
-          <img src={url} alt={alt ?? 'Aperçu du média'} />
-        ) : (
-          <video src={url} controls autoPlay playsInline />
-        )}
+    <ModalPortal>
+      <div className="media-lightbox-overlay" role="presentation" onClick={onClose}>
+        <div
+          ref={containerRef}
+          className="media-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={alt ?? 'Aperçu du média'}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {type === 'image' ? (
+            <img src={safeUrl} alt={alt ?? 'Aperçu du média'} />
+          ) : (
+            <video src={safeUrl} controls playsInline />
+          )}
+        </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

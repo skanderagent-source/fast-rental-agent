@@ -2,13 +2,20 @@ import { useMemo, useState } from 'react';
 import { Download, Trash2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabaseClient';
-import { api, ApiError } from '../../lib/apiClient';
+import { api, ApiError, sensitiveApi } from '../../lib/apiClient';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { useToast } from '../../components/common/ToastProvider';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { MediaLightbox } from '../../components/common/MediaLightbox';
 import { buildInventoryReferralUrl, copyTextToClipboard } from '../../lib/referral';
+import { sanitizeFilenameForDisplay } from '../../lib/mediaUpload';
+import { formatZodIssues, parseEmailChange, parsePhoneUpdate } from '../../lib/formValidation';
+import { useSubmitLock, OfflineError } from '../../lib/useSubmitLock';
+import { openUrlSafely, safeMediaSrc } from '../../lib/urlSafety';
+import { PasswordInput } from '../../components/common/PasswordInput';
+import { SanitizedInput } from '../../components/common/SanitizedField';
 import type { ListingMedia } from '@fast-rental/shared';
+import { validatePasswordPair } from '../auth/validation';
 
 type MediaListingGroup = {
   listingId: string;
@@ -41,6 +48,7 @@ function sectionHasInput(
     currentEmail: string;
     newEmail: string;
     confirmNewEmail: string;
+    emailPassword: string;
     currentPassword: string;
     newPassword: string;
     confirmNewPassword: string;
@@ -50,7 +58,7 @@ function sectionHasInput(
     section === 'phone'
       ? [values.currentPhone, values.newPhone, values.confirmNewPhone]
       : section === 'email'
-        ? [values.currentEmail, values.newEmail, values.confirmNewEmail]
+        ? [values.currentEmail, values.newEmail, values.confirmNewEmail, values.emailPassword]
         : [values.currentPassword, values.newPassword, values.confirmNewPassword];
   return fields.some((value) => value.trim().length > 0);
 }
@@ -85,9 +93,11 @@ export function UserDashboard() {
   const [currentEmail, setCurrentEmail] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [confirmNewEmail, setNewEmailConfirm] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const { locked: profileSubmitting, run: runProfileSubmit } = useSubmitLock({ requireOnline: true });
 
   const formValues = {
     currentPhone,
@@ -96,6 +106,7 @@ export function UserDashboard() {
     currentEmail,
     newEmail,
     confirmNewEmail,
+    emailPassword,
     currentPassword,
     newPassword,
     confirmNewPassword,
@@ -128,6 +139,7 @@ export function UserDashboard() {
     setCurrentEmail('');
     setNewEmail('');
     setNewEmailConfirm('');
+    setEmailPassword('');
   }
 
   function clearPasswordForm() {
@@ -176,73 +188,99 @@ export function UserDashboard() {
 
   async function submitPhoneChange() {
     if (!profile) return;
-    const next = newPhone.trim();
-    const confirm = confirmNewPhone.trim();
-    if (next.length < 6) {
-      toast('❌ Numéro trop court (min. 6 caractères)');
-      return;
-    }
-    if (next !== confirm) {
-      toast('❌ Les numéros ne correspondent pas');
-      return;
-    }
-    const existing = profile.telephone?.trim() ?? '';
-    if (existing) {
-      if (currentPhone.trim() !== existing) {
-        toast('❌ Le numéro actuel ne correspond pas');
+    try {
+      await runProfileSubmit(async () => {
+      const next = newPhone.trim();
+      const confirm = confirmNewPhone.trim();
+      const phoneParsed = parsePhoneUpdate(next);
+      if (!phoneParsed.success) {
+        toast(`❌ ${formatZodIssues(phoneParsed.error.issues)}`);
         return;
       }
-    } else if (currentPhone.trim()) {
-      toast('❌ Laisse le champ numéro actuel vide');
-      return;
+      if (next !== confirm) {
+        toast('❌ Les numéros ne correspondent pas');
+        return;
+      }
+      const existing = profile.telephone?.trim() ?? '';
+      if (existing) {
+        if (currentPhone.trim() !== existing) {
+          toast('❌ Le numéro actuel ne correspond pas');
+          return;
+        }
+      } else if (currentPhone.trim()) {
+        toast('❌ Laisse le champ numéro actuel vide');
+        return;
+      }
+      await api.patch('/api/me', { telephone: next });
+      await refreshProfile();
+      toast('✅ Téléphone mis à jour');
+      closeSection('phone');
+      });
+    } catch (err) {
+      if (err instanceof OfflineError) toast(`⚠️ ${err.message}`);
     }
-    await api.patch('/api/me', { telephone: next });
-    await refreshProfile();
-    toast('✅ Téléphone mis à jour');
-    closeSection('phone');
   }
 
   async function submitEmailChange() {
     if (!profile) return;
-    if (currentEmail.trim().toLowerCase() !== profile.email.toLowerCase()) {
-      toast('❌ L\'email actuel ne correspond pas');
-      return;
-    }
-    if (newEmail !== confirmNewEmail) {
-      toast('❌ Les nouveaux emails ne correspondent pas');
-      return;
-    }
-    const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
-    if (error) toast('❌ ' + error.message);
-    else {
-      toast('✅ Vérifie ta boîte mail pour confirmer');
-      closeSection('email');
+    try {
+      await runProfileSubmit(async () => {
+      if (currentEmail.trim().toLowerCase() !== profile.email.toLowerCase()) {
+        toast('❌ L\'email actuel ne correspond pas');
+        return;
+      }
+      const emailParsed = parseEmailChange(newEmail);
+      if (!emailParsed.success) {
+        toast('❌ Email invalide');
+        return;
+      }
+      if (newEmail !== confirmNewEmail) {
+        toast('❌ Les nouveaux emails ne correspondent pas');
+        return;
+      }
+      if (!emailPassword) {
+        toast('❌ Confirme ton mot de passe');
+        return;
+      }
+      const { error } = await supabase.auth.updateUser({
+        email: emailParsed.data,
+        current_password: emailPassword,
+      });
+      if (error) toast('❌ Impossible de mettre à jour l\'email');
+      else {
+        await supabase.auth.refreshSession();
+        toast('✅ Vérifie ta boîte mail pour confirmer');
+        closeSection('email');
+      }
+      });
+    } catch (err) {
+      if (err instanceof OfflineError) toast(`⚠️ ${err.message}`);
     }
   }
 
   async function submitPasswordChange() {
     if (!profile) return;
-    if (newPassword.length < 6) {
-      toast('❌ Mot de passe min. 6 caractères');
-      return;
-    }
-    if (newPassword !== confirmNewPassword) {
-      toast('❌ Les mots de passe ne correspondent pas');
-      return;
-    }
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: profile.email,
-      password: currentPassword,
-    });
-    if (signInError) {
-      toast('❌ Mot de passe actuel incorrect');
-      return;
-    }
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) toast('❌ ' + error.message);
-    else {
-      toast('✅ Mot de passe mis à jour');
-      closeSection('password');
+    try {
+      await runProfileSubmit(async () => {
+      const validationError = validatePasswordPair(newPassword, confirmNewPassword);
+      if (validationError) {
+        toast(`❌ ${validationError}`);
+        return;
+      }
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+        current_password: currentPassword,
+      });
+      if (error) toast('❌ Impossible de mettre à jour le mot de passe');
+      else {
+        await supabase.auth.refreshSession();
+        await supabase.auth.signOut({ scope: 'others' });
+        toast('✅ Mot de passe mis à jour');
+        closeSection('password');
+      }
+      });
+    } catch (err) {
+      if (err instanceof OfflineError) toast(`⚠️ ${err.message}`);
     }
   }
 
@@ -319,33 +357,39 @@ export function UserDashboard() {
           <div className="profile-expand">
             <div className="form-field">
               <label htmlFor="current-phone">Numéro actuel</label>
-              <input
+              <SanitizedInput
                 id="current-phone"
-                type="tel"
+                kind="phone"
+                maxLength={30}
                 value={currentPhone}
-                onChange={(e) => setCurrentPhone(e.target.value)}
+                onChange={setCurrentPhone}
                 placeholder={profile.telephone ? undefined : 'Aucun numéro enregistré'}
                 autoComplete="tel"
+                disabled={profileSubmitting}
               />
             </div>
             <div className="form-field">
               <label htmlFor="new-phone">{profile.telephone ? 'Nouveau numéro' : 'Numéro'}</label>
-              <input
+              <SanitizedInput
                 id="new-phone"
-                type="tel"
+                kind="phone"
+                maxLength={30}
                 value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
+                onChange={setNewPhone}
                 autoComplete="off"
+                disabled={profileSubmitting}
               />
             </div>
             <div className="form-field">
               <label htmlFor="confirm-phone">Confirmer le {profile.telephone ? 'nouveau ' : ''}numéro</label>
-              <input
+              <SanitizedInput
                 id="confirm-phone"
-                type="tel"
+                kind="phone"
+                maxLength={30}
                 value={confirmNewPhone}
-                onChange={(e) => setConfirmNewPhone(e.target.value)}
+                onChange={setConfirmNewPhone}
                 autoComplete="off"
+                disabled={profileSubmitting}
               />
             </div>
             <ProfileSectionActions
@@ -358,15 +402,49 @@ export function UserDashboard() {
           <div className="profile-expand">
             <div className="form-field">
               <label htmlFor="current-email">Email actuel</label>
-              <input id="current-email" type="email" value={currentEmail} onChange={(e) => setCurrentEmail(e.target.value)} autoComplete="email" />
+              <SanitizedInput
+                id="current-email"
+                kind="email"
+                maxLength={320}
+                value={currentEmail}
+                onChange={setCurrentEmail}
+                autoComplete="email"
+                disabled={profileSubmitting}
+              />
             </div>
             <div className="form-field">
               <label htmlFor="new-email">Nouvel email</label>
-              <input id="new-email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} autoComplete="off" />
+              <SanitizedInput
+                id="new-email"
+                kind="email"
+                maxLength={320}
+                value={newEmail}
+                onChange={setNewEmail}
+                autoComplete="off"
+                disabled={profileSubmitting}
+              />
             </div>
             <div className="form-field">
               <label htmlFor="confirm-email">Confirmer le nouvel email</label>
-              <input id="confirm-email" type="email" value={confirmNewEmail} onChange={(e) => setNewEmailConfirm(e.target.value)} autoComplete="off" />
+              <SanitizedInput
+                id="confirm-email"
+                kind="email"
+                maxLength={320}
+                value={confirmNewEmail}
+                onChange={setNewEmailConfirm}
+                autoComplete="off"
+                disabled={profileSubmitting}
+              />
+            </div>
+            <div className="form-field">
+              <label htmlFor="email-password">Mot de passe actuel</label>
+              <PasswordInput
+                id="email-password"
+                value={emailPassword}
+                onChange={setEmailPassword}
+                autoComplete="current-password"
+                disabled={profileSubmitting}
+              />
             </div>
             <ProfileSectionActions
               onCancel={() => requestCloseSection('email')}
@@ -378,15 +456,33 @@ export function UserDashboard() {
           <div className="profile-expand">
             <div className="form-field">
               <label htmlFor="current-password">Mot de passe actuel</label>
-              <input id="current-password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} autoComplete="current-password" />
+              <PasswordInput
+                id="current-password"
+                value={currentPassword}
+                onChange={setCurrentPassword}
+                autoComplete="current-password"
+                disabled={profileSubmitting}
+              />
             </div>
             <div className="form-field">
               <label htmlFor="new-password">Nouveau mot de passe</label>
-              <input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" />
+              <PasswordInput
+                id="new-password"
+                value={newPassword}
+                onChange={setNewPassword}
+                autoComplete="new-password"
+                disabled={profileSubmitting}
+              />
             </div>
             <div className="form-field">
               <label htmlFor="confirm-password">Confirmer le mot de passe</label>
-              <input id="confirm-password" type="password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} autoComplete="new-password" />
+              <PasswordInput
+                id="confirm-password"
+                value={confirmNewPassword}
+                onChange={setConfirmNewPassword}
+                autoComplete="new-password"
+                disabled={profileSubmitting}
+              />
             </div>
             <ProfileSectionActions
               onCancel={() => requestCloseSection('password')}
@@ -482,7 +578,7 @@ function MyMediaSection({
 
     void (async () => {
       try {
-        await api.delete(`/api/listings/media/${deleted.id}`);
+        await sensitiveApi.delete(`/api/listings/media/${deleted.id}`, 'media.delete', deleted.id);
         toast('Média supprimé');
       } catch (err) {
         const message = err instanceof ApiError ? err.message : 'Suppression impossible';
@@ -494,14 +590,14 @@ function MyMediaSection({
   }
 
   function openPreview(media: ListingMedia) {
-    if (media.viewUrl) setPreviewMedia(media);
+    if (safeMediaSrc(media.viewUrl)) setPreviewMedia(media);
     else toast('Aperçu indisponible');
   }
 
   async function downloadMedia(media: ListingMedia) {
     try {
       const { url } = await api.get<{ url: string }>(`/api/listings/media/${media.id}/download-url`);
-      window.open(url, '_blank');
+      if (!openUrlSafely(url)) toast('⚠️ Lien de téléchargement invalide');
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Téléchargement impossible';
       toast(`⚠️ ${message}`);
@@ -535,10 +631,10 @@ function MyMediaSection({
                       aria-label="Voir en grand"
                       onClick={() => openPreview(media)}
                     >
-                      {media.type === 'image' && media.viewUrl ? (
-                        <img src={media.viewUrl} alt={media.original_filename} />
-                      ) : media.type === 'video' && media.viewUrl ? (
-                        <video src={media.viewUrl} muted preload="metadata" />
+                      {media.type === 'image' && safeMediaSrc(media.viewUrl) ? (
+                        <img src={safeMediaSrc(media.viewUrl)} alt={sanitizeFilenameForDisplay(media.original_filename)} />
+                      ) : media.type === 'video' && safeMediaSrc(media.viewUrl) ? (
+                        <video src={safeMediaSrc(media.viewUrl)} muted preload="metadata" />
                       ) : (
                         <span className="my-media-thumb__placeholder">{media.type === 'video' ? '🎬' : '📷'}</span>
                       )}
@@ -593,7 +689,7 @@ function MyMediaSection({
         open={!!previewMedia}
         url={previewMedia?.viewUrl}
         type={previewMedia?.type === 'video' ? 'video' : 'image'}
-        alt={previewMedia?.original_filename}
+        alt={previewMedia ? sanitizeFilenameForDisplay(previewMedia.original_filename) : undefined}
         onClose={() => setPreviewMedia(null)}
       />
     </section>

@@ -10,7 +10,9 @@ import {
   MAX_VIDEO_SIZE_MB,
 } from '@fast-rental/shared';
 import { requireAuth, optionalAuth } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { rejectMultipartBody } from '../../middleware/rejectMultipartBody.js';
+import { requireActionToken } from '../../middleware/requireActionToken.js';
+import { requirePermission } from '../../middleware/requireRole.js';
 import { validateRequest } from '../../middleware/validateRequest.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { paramId } from '../../utils/params.js';
@@ -48,7 +50,7 @@ router.get('/map', requireAuth, asyncHandler(async (_req, res) => {
   res.json({ data });
 }));
 
-router.post('/', requireAuth, requireRole('admin'), validateRequest(createListingSchema), asyncHandler(async (req, res) => {
+router.post('/', requireAuth, requirePermission('listings.manage'), validateRequest(createListingSchema), asyncHandler(async (req, res) => {
   const profile = res.locals.profile as { id: string; nom: string };
   const data = await createListing(req.body, profile.id);
   await logActivity({ agentId: profile.id, agentNom: profile.nom, typeAction: 'logement_ajoute', details: `Ajout: ${data.adresse}`, logementId: data.id });
@@ -73,13 +75,13 @@ router.get('/me/media', requireAuth, asyncHandler(async (_req, res) => {
   res.json({ data });
 }));
 
-router.post('/media/:mediaId/approve', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/media/:mediaId/approve', requireAuth, requirePermission('media.moderate'), asyncHandler(async (req, res) => {
   const admin = res.locals.user as { id: string };
   const data = await approveMedia(paramId(req.params.mediaId), admin.id);
   res.json({ data });
 }));
 
-router.post('/media/:mediaId/reject', requireAuth, requireRole('admin'), validateRequest(rejectMediaSchema), asyncHandler(async (req, res) => {
+router.post('/media/:mediaId/reject', requireAuth, requirePermission('media.moderate'), validateRequest(rejectMediaSchema), asyncHandler(async (req, res) => {
   const admin = res.locals.user as { id: string };
   const data = await rejectMedia(paramId(req.params.mediaId), admin.id, req.body.reason);
   res.json({ data });
@@ -90,7 +92,7 @@ router.get('/media/:mediaId/download-url', optionalAuth, asyncHandler(async (req
   res.json({ data });
 }));
 
-router.delete('/media/:mediaId', requireAuth, asyncHandler(async (req, res) => {
+router.delete('/media/:mediaId', requireAuth, requireActionToken('media.delete', 'mediaId'), asyncHandler(async (req, res) => {
   const user = res.locals.user as { id: string };
   const profile = res.locals.profile as { role: string };
   const data = await deleteMedia(paramId(req.params.mediaId), user.id, profile.role === 'admin');
@@ -103,14 +105,14 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
   res.json({ data: { listing, media } });
 }));
 
-router.patch('/:id', requireAuth, requireRole('admin'), validateRequest(updateListingSchema), asyncHandler(async (req, res) => {
+router.patch('/:id', requireAuth, requirePermission('listings.manage'), validateRequest(updateListingSchema), asyncHandler(async (req, res) => {
   const profile = res.locals.profile as { id: string; nom: string };
   const data = await updateListing(paramId(req.params.id), req.body);
   await logActivity({ agentId: profile.id, agentNom: profile.nom, typeAction: 'listing_updated', details: `Modifié: ${data.adresse}`, logementId: data.id });
   res.json({ data });
 }));
 
-router.delete('/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+router.delete('/:id', requireAuth, requirePermission('listings.manage'), requireActionToken('listing.delete', 'id'), asyncHandler(async (req, res) => {
   const data = await softDeleteListing(paramId(req.params.id));
   res.json({ data });
 }));
@@ -141,6 +143,7 @@ router.post('/:id/media/upload-url', requireAuth, validateRequest(requestMediaUp
 router.put(
   '/:id/media/:mediaId/file',
   requireAuth,
+  rejectMultipartBody,
   raw({ type: () => true, limit: `${MAX_VIDEO_SIZE_MB}mb` }),
   asyncHandler(async (req, res) => {
     const user = res.locals.user as { id: string };

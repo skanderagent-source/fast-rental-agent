@@ -9,10 +9,17 @@
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `VITE_PUBLIC_SITE_URL` (Union Rental public URL)
-4. Deploy. After deploy, update:
+4. Build/deploy with all four values present. The production build uses
+   `VITE_API_BASE_URL` and `VITE_SUPABASE_URL` to generate the exact
+   `connect-src` Content Security Policy; empty or invalid URLs fail the build.
+5. Deploy. After deploy, update:
    - Supabase Auth redirect URLs
    - Backend `FRONTEND_ORIGIN`
    - R2 CORS allowed origins
+6. Verify response headers include HSTS, CSP (`frame-ancestors 'none'`),
+   `nosniff`, Referrer-Policy, and Permissions-Policy. In browser DevTools,
+   confirm the generated CSP permits only the production API, Supabase,
+   Cloudflare R2, and OpenStreetMap resources used by the app.
 
 ## Hostinger VPS (backend) — Phase 22
 
@@ -21,10 +28,26 @@
 3. `sudo timedatectl set-timezone America/Toronto`
 4. Clone repo to `/var/www/fast-rental`.
 5. `npm install && npm run build --workspace @fast-rental/shared && npm run build --workspace @fast-rental/backend`
+   Or use `bash scripts/deploy-vps.sh`, which also prunes dev dependencies and deletes backend source maps.
 6. Create `apps/backend/.env` (`chmod 600`) with production values.
+   Use a dedicated production Supabase project and production-only R2/Resend credentials.
+   Set `FRONTEND_ORIGIN` to the exact Vercel URL(s). For staging plus production,
+   use a comma-separated exact-origin list (no wildcards), e.g.
+   `https://agent.example.com,https://agent-staging.example.com`.
+   - `HOST=127.0.0.1`
+   - `PUBLIC_API_BASE_URL=https://api.your-domain.com`
+   - `TRUSTED_HOSTS=api.your-domain.com`
+   - Keep the documented HTTP header/request/keep-alive timeout defaults unless
+     production uploads demonstrate a need for a higher request timeout.
 7. `pm2 start ecosystem.config.cjs && pm2 save && pm2 startup`
-8. Copy [deploy/Caddyfile](../deploy/Caddyfile) to `/etc/caddy/Caddyfile`, reload Caddy.
-9. Verify: `curl https://api.your-domain.com/health`
+8. Replace every `api.YOUR_DOMAIN.com` placeholder in
+   [deploy/Caddyfile](../deploy/Caddyfile), copy it to `/etc/caddy/Caddyfile`,
+   validate with `caddy validate --config /etc/caddy/Caddyfile`, then reload.
+9. Verify HTTPS and headers:
+   - `curl -I http://api.your-domain.com/health` returns a permanent HTTPS redirect
+   - `curl -I https://api.your-domain.com/health` includes HSTS, CSP,
+     `nosniff`, Referrer-Policy, Permissions-Policy, and no `Server` or
+     `X-Powered-By` header
 
 ## DNS — Phase 23
 

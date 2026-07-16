@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
+import { deleteObject } from '../media/storage.service.js';
 
 /** Removes stale pending media reservations older than 24h without completed upload. */
 export async function cleanupStaleMediaReservations(now = new Date()) {
@@ -11,6 +12,11 @@ export async function cleanupStaleMediaReservations(now = new Date()) {
     .lt('created_at', cutoff);
   if (error) throw error;
   for (const row of data ?? []) {
+    try {
+      await deleteObject(row.object_key);
+    } catch {
+      // Best-effort R2 cleanup; DB row is still removed to release quota.
+    }
     await supabaseAdmin.from('listing_media').delete().eq('id', row.id);
   }
   return data ?? [];

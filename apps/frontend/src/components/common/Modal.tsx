@@ -1,4 +1,6 @@
 import { useEffect, useId } from 'react';
+import { useFocusTrap } from '../../lib/useFocusTrap';
+import { ModalPortal } from './ModalPortal';
 
 type ModalProps = {
   open: boolean;
@@ -10,6 +12,7 @@ type ModalProps = {
 
 export function Modal({ open, title, onClose, children, footer }: ModalProps) {
   const titleId = useId();
+  const containerRef = useFocusTrap(open);
 
   useEffect(() => {
     if (!open) return;
@@ -23,32 +26,28 @@ export function Modal({ open, title, onClose, children, footer }: ModalProps) {
   if (!open) return null;
 
   return (
-    <div
-      className="modal-overlay"
-      role="presentation"
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-      }}
-    >
+    <ModalPortal>
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: '100%', maxWidth: 420, background: 'var(--bg2)', borderRadius: 12,
-          border: '1px solid var(--border)', padding: 16, maxHeight: '90vh', overflow: 'auto',
-        }}
+        className="modal-overlay"
+        role="presentation"
+        onClick={onClose}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 id={titleId} style={{ margin: 0, fontSize: 16 }}>{title}</h3>
-          <button type="button" className="btn-secondary" aria-label="Fermer" onClick={onClose} style={{ padding: '4px 8px' }}>✕</button>
+        <div
+          ref={containerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          className="modal-panel"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="modal-panel__header">
+            <h3 id={titleId} className="modal-panel__title">{title}</h3>
+            <button type="button" className="btn-secondary modal-panel__close" aria-label="Fermer" onClick={onClose}>✕</button>
+          </div>
+          {children}
+          {footer && <div className="modal-panel__footer">{footer}</div>}
         </div>
-        {children}
-        {footer && <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>{footer}</div>}
       </div>
-    </div>
+    </ModalPortal>
   );
 }

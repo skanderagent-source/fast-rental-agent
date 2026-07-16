@@ -49,6 +49,19 @@ describe('email templates', () => {
     expect(content.text).toContain('/agent-login');
     expect(content.text.toLowerCase()).not.toContain('secret123');
   });
+
+  it('escapes dynamic markup and strips email header controls', () => {
+    const content = templates.mediaRejected({
+      agentNom: '<img src=x onerror=alert(1)>',
+      originalFilename: '<script>alert(1)</script>.jpg',
+      listingAdresse: '123 Rue\r\nBcc: attacker@example.com',
+      reason: '<b>unsafe</b>',
+    });
+    expect(content.html).not.toContain('<script>');
+    expect(content.html).not.toContain('<img');
+    expect(content.html).toContain('&lt;b&gt;unsafe&lt;/b&gt;');
+    expect(content.subject).not.toMatch(/[\r\n]/);
+  });
 });
 
 describe('email service', () => {
@@ -87,6 +100,30 @@ describe('email service', () => {
       text: 'x',
     })).resolves.toBeUndefined();
     expect(logger.error).toHaveBeenCalled();
+    (envMod.env as { EMAIL_ENABLED: boolean }).EMAIL_ENABLED = false;
+  });
+
+  it('rejects CRLF injection in recipient addresses', async () => {
+    await expect(sendEmail({
+      to: 'agent@test.com\r\nBcc: evil@example.com',
+      subject: 'Test',
+      html: '<p>x</p>',
+    })).rejects.toMatchObject({ status: 400, code: 'VALIDATION_ERROR' });
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes CRLF from subjects before send', async () => {
+    const envMod = await import('../src/config/env.js');
+    (envMod.env as { EMAIL_ENABLED: boolean }).EMAIL_ENABLED = true;
+    mockSend.mockResolvedValueOnce({ data: { id: 'ok' }, error: null });
+    await sendEmail({
+      to: 'agent@test.com',
+      subject: 'Hello\r\nBcc: evil@example.com',
+      html: '<p>x</p>',
+    });
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'Hello Bcc: evil@example.com',
+    }));
     (envMod.env as { EMAIL_ENABLED: boolean }).EMAIL_ENABLED = false;
   });
 });

@@ -12,8 +12,13 @@ vi.mock('../src/modules/sheets/sheets.service.js', () => ({
   syncAllSheets: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
+vi.mock('../src/modules/media/storage.service.js', () => ({
+  deleteObject: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { cleanupStaleMediaReservations } from '../src/modules/jobs/staleMediaCleanup.js';
-import { startJobs } from '../src/modules/jobs/startJobs.js';
+import { deleteObject } from '../src/modules/media/storage.service.js';
+import { startJobs, stopJobs } from '../src/modules/jobs/startJobs.js';
 
 describe('cleanupStaleMediaReservations', () => {
   it('deletes stale pending reservations', async () => {
@@ -23,7 +28,7 @@ describe('cleanupStaleMediaReservations', () => {
         eq: vi.fn().mockReturnValue({
           is: vi.fn().mockReturnValue({
             lt: vi.fn().mockResolvedValue({
-              data: [{ id: 'm1', object_key: 'k1' }],
+              data: [{ id: 'm1', object_key: 'listings/l1/uuid/a.jpg' }],
               error: null,
             }),
           }),
@@ -34,6 +39,7 @@ describe('cleanupStaleMediaReservations', () => {
 
     const cleaned = await cleanupStaleMediaReservations(new Date('2030-06-01'));
     expect(cleaned).toHaveLength(1);
+    expect(deleteObject).toHaveBeenCalledWith('listings/l1/uuid/a.jpg');
     expect(deleteEq).toHaveBeenCalledWith('id', 'm1');
   });
 });
@@ -41,5 +47,11 @@ describe('cleanupStaleMediaReservations', () => {
 describe('cron jobs', () => {
   it('registers jobs without throwing', () => {
     expect(() => startJobs()).not.toThrow();
+  });
+
+  it('stops scheduled jobs without throwing', () => {
+    startJobs();
+    expect(() => stopJobs()).not.toThrow();
+    expect(() => stopJobs()).not.toThrow();
   });
 });

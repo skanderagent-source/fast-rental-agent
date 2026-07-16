@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { buildActionMessage } from '@fast-rental/shared';
 import type { Listing } from '@fast-rental/shared';
 import { Modal } from '../common/Modal';
+import { SanitizedInput } from '../common/SanitizedField';
+import { copyTextToClipboard } from '../../lib/clipboard';
 import { formatPrice } from '../../lib/format';
 
 type Props = {
@@ -17,19 +19,23 @@ export function ApplicationMessageModal({ open, listing, prefix, onClose, onCopi
   const [date, setDate] = useState('');
   const [error, setError] = useState('');
 
-  function submit() {
+  async function submit() {
     if (!listing) return;
     if (!nom.trim() || !date.trim()) {
       setError('Nom et date requis');
       return;
     }
     const msg = buildActionMessage(prefix, listing.adresse, formatPrice(listing.prix).replace(' /mois', ''), date, nom);
-    void navigator.clipboard.writeText(msg);
-    onCopied();
-    onClose();
-    setNom('');
-    setDate('');
-    setError('');
+    try {
+      await copyTextToClipboard(msg);
+      onCopied();
+      onClose();
+      setNom('');
+      setDate('');
+      setError('');
+    } catch {
+      setError('Impossible de copier le message. Vérifie les permissions du presse-papiers.');
+    }
   }
 
   return (
@@ -37,16 +43,16 @@ export function ApplicationMessageModal({ open, listing, prefix, onClose, onCopi
       open={open}
       title={prefix === 'En application' ? 'Message — En application' : 'Message — Request of Approval'}
       onClose={onClose}
-      footer={<button className="btn-add" type="button" onClick={submit}>Copier le message</button>}
+      footer={<button className="btn-add" type="button" onClick={() => void submit()}>Copier le message</button>}
     >
       {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>{error}</div>}
       <div className="form-field">
         <label htmlFor="msg-nom">Nom et prénom du prospect</label>
-        <input id="msg-nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+        <SanitizedInput id="msg-nom" kind="personName" maxLength={120} value={nom} onChange={setNom} />
       </div>
       <div className="form-field" style={{ marginTop: 10 }}>
         <label htmlFor="msg-date">Date de déménagement</label>
-        <input id="msg-date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <SanitizedInput id="msg-date" kind="dateText" maxLength={20} value={date} onChange={setDate} />
       </div>
     </Modal>
   );

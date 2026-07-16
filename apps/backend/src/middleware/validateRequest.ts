@@ -3,6 +3,14 @@ import type { ZodSchema } from 'zod';
 
 export function validateRequest(schema: ZodSchema, source: 'body' | 'query' = 'body') {
   return (req: Request, res: Response, next: NextFunction) => {
+    if (source === 'body' && !req.is('application/json')) {
+      return res.status(415).json({
+        error: {
+          code: 'UNSUPPORTED_MEDIA_TYPE',
+          message: 'Content-Type application/json requis',
+        },
+      });
+    }
     const result = schema.safeParse(source === 'body' ? req.body : req.query);
     if (!result.success) {
       return res.status(400).json({

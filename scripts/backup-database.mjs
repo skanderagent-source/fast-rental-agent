@@ -13,4 +13,7 @@ const file = path.join(outDir, `backup-${new Date().toISOString().slice(0, 10)}.
 
 console.log(`Writing backup to ${file}…`);
 execSync(`npx supabase db dump -f "${file}"`, { stdio: 'inherit', cwd: rootDir() });
+fs.chmodSync(file, 0o600);
 console.log('✓ Backup complete');
+console.log('Store backups outside the repo and encrypt at rest (e.g. gpg, provider-managed backup vault).');
+console.log('Restrict access to operators with database recovery responsibility only.');

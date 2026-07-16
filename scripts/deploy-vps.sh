@@ -8,6 +8,8 @@ echo "Building backend…"
 npm ci
 npm run build --workspace @fast-rental/shared
 npm run build --workspace @fast-rental/backend
+find apps/backend/dist -name '*.map' -delete 2>/dev/null || true
+npm prune --omit=dev
 
 chmod 600 apps/backend/.env 2>/dev/null || true
 

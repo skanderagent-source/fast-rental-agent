@@ -35,6 +35,11 @@ for (const pathFragment of ['/auth/reset-password', '/auth/force-password-change
   }
 }
 
+if (routes.includes('/auth/mfa')) {
+  console.error('✗ routes still include removed /auth/mfa route');
+  failed++;
+}
+
 if (!login.includes('expired')) {
   console.error('✗ LoginPage missing session-expired handling');
   failed++;
@@ -48,6 +53,18 @@ if (!authProvider.includes('expired')) {
 const setupDoc = fs.readFileSync(path.join(root, 'docs/supabase-auth-setup.md'), 'utf8');
 if (!setupDoc.includes('twkqsaupojldddclgpqj')) {
   console.error('✗ supabase-auth-setup.md missing project ref');
+  failed++;
+}
+for (const requirement of ['900 seconds', 'Require current password']) {
+  if (!setupDoc.includes(requirement)) {
+    console.error(`✗ Supabase auth setup missing security requirement: ${requirement}`);
+    failed++;
+  }
+}
+
+const authorization = requireFile('apps/backend/src/middleware/requireRole.ts', 'Permission middleware');
+if (!authorization.includes('requirePermission')) {
+  console.error('✗ Admin permission enforcement missing');
   failed++;
 }
 

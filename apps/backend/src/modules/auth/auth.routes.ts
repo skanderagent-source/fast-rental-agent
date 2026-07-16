@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { updateProfileSchema } from '@fast-rental/shared';
+import { actionTokenRequestSchema, updateProfileSchema } from '@fast-rental/shared';
 import { requireAuth } from '../../middleware/auth.js';
 import { validateRequest } from '../../middleware/validateRequest.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { getMe, logLoginActivity, updateProfile, clearMustChangePassword } from './auth.service.js';
+import { issueActionToken } from './actionTokens.service.js';
 
 const router = Router();
 
@@ -30,6 +31,17 @@ router.patch(
       profilePhotoMediaId: req.body.profilePhotoMediaId,
     });
     res.json({ data });
+  }),
+);
+
+router.post(
+  '/action-token',
+  requireAuth,
+  validateRequest(actionTokenRequestSchema),
+  asyncHandler(async (req, res) => {
+    const user = res.locals.user as { id: string };
+    const data = await issueActionToken(user.id, req.body.action, req.body.targetId);
+    res.status(201).json({ data });
   }),
 );
 

@@ -1,8 +1,10 @@
-import cron from 'node-cron';
+import cron, { type ScheduledTask } from 'node-cron';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { syncAllSheets } from '../sheets/sheets.service.js';
 import { cleanupStaleMediaReservations } from './staleMediaCleanup.js';
+
+const scheduledTasks: ScheduledTask[] = [];
 
 function hasGoogleSheetsConfig() {
   return Boolean(
@@ -24,11 +26,11 @@ async function runSheetSyncJob(label: string) {
 }
 
 export function startJobs() {
-  cron.schedule(env.CRON_SHEET_SYNC, async () => {
+  scheduledTasks.push(cron.schedule(env.CRON_SHEET_SYNC, async () => {
     await runSheetSyncJob('cron');
-  });
+  }));
 
-  cron.schedule(env.CRON_STALE_MEDIA_CLEANUP, async () => {
+  scheduledTasks.push(cron.schedule(env.CRON_STALE_MEDIA_CLEANUP, async () => {
     logger.info('Running stale media cleanup');
     try {
       const cleaned = await cleanupStaleMediaReservations();
@@ -36,7 +38,7 @@ export function startJobs() {
     } catch (err) {
       logger.error({ err }, 'Stale media cleanup failed');
     }
-  });
+  }));
 
   if (env.RUN_SHEET_SYNC_ON_STARTUP && hasGoogleSheetsConfig()) {
     void runSheetSyncJob('startup');
@@ -45,4 +47,11 @@ export function startJobs() {
   } else {
     logger.info('Sheet sync at startup disabled');
   }
+}
+
+export function stopJobs() {
+  for (const task of scheduledTasks) {
+    task.stop();
+  }
+  scheduledTasks.length = 0;
 }

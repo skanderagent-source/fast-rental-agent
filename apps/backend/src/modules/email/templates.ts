@@ -6,6 +6,13 @@ export function escapeHtml(value: unknown): string {
   ));
 }
 
+export function safeEmailHeader(value: unknown): string {
+  return String(value ?? '')
+    .replace(/[\r\n\u0000-\u001f\u007f]+/g, ' ')
+    .trim()
+    .slice(0, 200);
+}
+
 function frontendUrl(path: string) {
   const base = env.FRONTEND_ORIGIN.split(',')[0]?.trim() ?? 'http://localhost:5173';
   return `${base}${path}`;
@@ -40,7 +47,7 @@ export function leadAssignedAgent(input: {
   lead: LeadLike;
   listingAdresse?: string | null;
 }): EmailContent {
-  const subject = `Nouvelle demande assignée — ${input.lead.nom}`;
+  const subject = safeEmailHeader(`Nouvelle demande assignée — ${input.lead.nom}`);
   const link = frontendUrl('/app/dashboard');
   const text = [
     `Bonjour ${input.agentNom},`,
@@ -57,7 +64,7 @@ export function mediaApproved(input: {
   originalFilename: string;
   listingAdresse: string;
 }): EmailContent {
-  const subject = `Média approuvé — ${input.listingAdresse}`;
+  const subject = safeEmailHeader(`Média approuvé — ${input.listingAdresse}`);
   const text = `Bonjour ${input.agentNom},\nFichier: ${input.originalFilename}\nLogement: ${input.listingAdresse}\nCe média est maintenant visible publiquement.`;
   const html = `<p>Bonjour ${escapeHtml(input.agentNom)},</p><p>Fichier: ${escapeHtml(input.originalFilename)}</p><p>Logement: ${escapeHtml(input.listingAdresse)}</p><p>Ce média est maintenant visible publiquement.</p>`;
   return { subject, html, text };
@@ -69,7 +76,7 @@ export function mediaRejected(input: {
   listingAdresse: string;
   reason?: string | null;
 }): EmailContent {
-  const subject = `Média refusé — ${input.listingAdresse}`;
+  const subject = safeEmailHeader(`Média refusé — ${input.listingAdresse}`);
   const reasonLine = input.reason ? `Raison : ${input.reason}` : 'Aucune raison fournie.';
   const text = `Bonjour ${input.agentNom},\nFichier: ${input.originalFilename}\nLogement: ${input.listingAdresse}\n${reasonLine}`;
   const html = `<p>Bonjour ${escapeHtml(input.agentNom)},</p><p>Fichier: ${escapeHtml(input.originalFilename)}</p><p>Logement: ${escapeHtml(input.listingAdresse)}</p><p>${escapeHtml(reasonLine)}</p>`;
@@ -78,7 +85,7 @@ export function mediaRejected(input: {
 
 export function accountCreated(input: { nom: string; email: string }): EmailContent {
   const loginUrl = frontendUrl('/agent-login');
-  const subject = 'Ton compte LogiGo Agent a été créé';
+  const subject = safeEmailHeader('Ton compte LogiGo Agent a été créé');
   const text = [
     `Bonjour ${input.nom},`,
     `Email de connexion: ${input.email}`,
@@ -91,7 +98,7 @@ export function accountCreated(input: { nom: string; email: string }): EmailCont
 
 export function testEmail(): EmailContent {
   return {
-    subject: 'Test LogiGo',
+    subject: safeEmailHeader('Test LogiGo'),
     html: '<p>Email de test LogiGo Agent.</p>',
     text: 'Email de test LogiGo Agent.',
   };

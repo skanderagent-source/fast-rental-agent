@@ -29,6 +29,8 @@
     "verify-cutover": "node scripts/verify-cutover.mjs",
     "verify-dns": "node scripts/verify-dns.mjs",
     "security-checklist": "node scripts/run-security-checklist.mjs",
+    "audit:deps": "npm audit --audit-level=high",
+    "scan-secrets": "node scripts/scan-secrets.mjs",
     "create-initial-admin": "node scripts/create-initial-admin.mjs",
     "create-test-agent": "node scripts/create-test-agent.mjs",
     "backup-db": "node scripts/backup-database.mjs",

@@ -163,12 +163,12 @@ export function MapPanel() {
         )}
       </div>
       {active && data?.truncated && (
-        <div className="empty" style={{ marginTop: 12 }}>
+        <div className="map-panel__notice">
           La carte affiche les {MAX_MAP_LISTINGS.toLocaleString('fr-CA')} premiers logements sur {data.total.toLocaleString('fr-CA')}.
         </div>
       )}
       {active && unlocatedCount > 0 && (
-        <div className="empty" style={{ marginTop: 12 }}>
+        <div className="map-panel__notice">
           {unlocatedCount} logement{unlocatedCount > 1 ? 's' : ''} sans position affichable sur la carte.
         </div>
       )}

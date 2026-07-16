@@ -1,5 +1,6 @@
 import {
   MAX_IMAGES_PER_LISTING,
+  MAX_LISTING_SEARCH_ROWS,
   MAX_MAP_LISTINGS,
   MAX_VIDEOS_PER_LISTING,
   type MapListing,
@@ -10,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { env } from '../../config/env.js';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { getPagination } from '../../utils/pagination.js';
+import { sanitizePostgrestSearchTerm } from '../../utils/postgrest.js';
 import { slugifyAddress, safeFilename } from '../../utils/slug.js';
 import {
   createDownloadUrl,
@@ -18,7 +20,10 @@ import {
   isLocalStorage,
   objectExists,
   putObject,
+  readObjectPrefix,
+  readObjectSize,
 } from '../media/storage.service.js';
+import { validateMediaContentBuffer, validateMediaContentSize } from '../../utils/mediaContentInspection.js';
 import { logActivity } from '../activity/activity.service.js';
 import { emailService } from '../email/email.service.js';
 import { geocodeListing } from './listings.geocode.js';
@@ -30,7 +35,29 @@ const PUBLIC_FIELDS = [
   'latitude', 'longitude', 'approved_media_count', 'approved_image_count',
 ];
 const MAP_QUERY_PAGE_SIZE = 1000;
-const ADDRESS_FIELDS = ['adresse', 'quartier', 'ville'] as const;
+const ADDRESS_FIELDS = ['adresse', 'quartier'] as const;
+const LISTING_WRITABLE_FIELDS = [
+  'adresse',
+  'quartier',
+  'prix',
+  'taille',
+  'statut',
+  'electromenagers',
+  'code_entree',
+  'concierge_tel',
+  'notes',
+  'source',
+  'latitude',
+  'longitude',
+] as const;
+
+function pickListingWrites(input: Record<string, unknown>) {
+  const writable = Object.create(null) as Record<string, unknown>;
+  for (const field of LISTING_WRITABLE_FIELDS) {
+    if (input[field] !== undefined) writable[field] = input[field];
+  }
+  return writable;
+}
 
 function pickPublic(listing: Record<string, unknown>) {
   const out: Record<string, unknown> = {};
@@ -38,6 +65,55 @@ function pickPublic(listing: Record<string, unknown>) {
     if (listing[key] !== undefined) out[key] = listing[key];
   }
   return out;
+}
+
+type CoverMediaRow = {
+  listing_id: string;
+  object_key: string;
+  original_filename: string;
+};
+
+async function loadCoverImageUrls(listingIds: string[]): Promise<Map<string, string>> {
+  if (!listingIds.length) return new Map();
+
+  const { data, error } = await supabaseAdmin
+    .from('listing_media')
+    .select('listing_id, object_key, original_filename, sort_order, created_at')
+    .in('listing_id', listingIds)
+    .eq('status', 'approved')
+    .eq('type', 'image')
+    .not('upload_completed_at', 'is', null)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+
+  const firstByListing = new Map<string, CoverMediaRow>();
+  for (const row of (data ?? []) as CoverMediaRow[]) {
+    if (!firstByListing.has(row.listing_id)) {
+      firstByListing.set(row.listing_id, row);
+    }
+  }
+
+  const entries = await Promise.all(
+    [...firstByListing.entries()].map(async ([listingId, media]) => {
+      const url = await createDownloadUrl(media.object_key, media.original_filename, true);
+      return [listingId, url] as const;
+    }),
+  );
+  return new Map(entries);
+}
+
+async function attachCoverImageUrls<T extends { id: string; approved_image_count?: number }>(
+  items: T[],
+): Promise<Array<T & { cover_image_url?: string }>> {
+  const listingIds = items
+    .filter((item) => (item.approved_image_count ?? 0) > 0)
+    .map((item) => item.id);
+  const coverUrls = await loadCoverImageUrls(listingIds);
+  return items.map((item) => ({
+    ...item,
+    ...(coverUrls.has(item.id) ? { cover_image_url: coverUrls.get(item.id) } : {}),
+  }));
 }
 
 export async function listListings(query: {
@@ -57,7 +133,10 @@ export async function listListings(query: {
     .is('deleted_at', null);
 
   if (query.q) {
-    dbQuery = dbQuery.or(`adresse.ilike.%${query.q}%,quartier.ilike.%${query.q}%`);
+    const safeQ = sanitizePostgrestSearchTerm(query.q);
+    if (safeQ) {
+      dbQuery = dbQuery.or(`adresse.ilike.%${safeQ}%,quartier.ilike.%${safeQ}%`);
+    }
   }
   if (query.quartier) dbQuery = dbQuery.eq('quartier', query.quartier);
   if (query.statut) dbQuery = dbQuery.eq('statut', query.statut);
@@ -72,8 +151,11 @@ export async function listListings(query: {
     dbQuery = sources.length === 1 ? dbQuery.eq('source', sources[0]!) : dbQuery.in('source', sources);
   }
 
-  const { data: allRows, error, count } = await dbQuery;
+  const { data: allRows, error, count } = await dbQuery.limit(MAX_LISTING_SEARCH_ROWS);
   if (error) throw error;
+
+  const totalMatches = count ?? allRows?.length ?? 0;
+  const truncated = totalMatches > MAX_LISTING_SEARCH_ROWS;
 
   const { data: countRows } = await supabaseAdmin.from('listing_media_counts').select('*');
   const countMap = new Map((countRows ?? []).map((c) => [c.listing_id, c]));
@@ -94,6 +176,7 @@ export async function listListings(query: {
     if (publicSafe) return pickPublic(item as Record<string, unknown>);
     return item;
   });
+  const items = await attachCoverImageUrls(pageItems);
 
   const filtered = sorted;
   const available = filtered.filter((d) => d.statut === 'Available').length;
@@ -104,10 +187,11 @@ export async function listListings(query: {
     : null;
 
   return {
-    items: pageItems,
+    items,
     page: query.page,
     pageSize: query.pageSize,
-    total: count ?? sorted.length,
+    total: truncated ? MAX_LISTING_SEARCH_ROWS : (count ?? sorted.length),
+    truncated,
     summary: { total: filtered.length, available, onHold, averagePrice },
   };
 }
@@ -224,43 +308,45 @@ export async function getListing(id: string, publicSafe = false) {
 }
 
 export async function createListing(input: Record<string, unknown>, createdBy: string) {
-  const slug = slugifyAddress(String(input.adresse));
+  const writable = pickListingWrites(input);
+  const slug = slugifyAddress(String(writable.adresse));
   const payload = {
-    ...input,
-    source: input.source ?? 'manual',
+    ...writable,
+    source: writable.source ?? 'manual',
     sheet_row_id: `${slug}|manual`,
     created_by: createdBy,
-    geocoding_status: input.latitude != null && input.longitude != null ? 'manual' : 'pending',
+    geocoding_status: writable.latitude != null && writable.longitude != null ? 'manual' : 'pending',
   };
   const { data, error } = await supabaseAdmin.from('logements').insert(payload).select('*').single();
   if (error) {
     if (error.code === '23505') throw conflict('Cette adresse existe déjà');
     throw error;
   }
-  if (input.latitude == null || input.longitude == null) {
+  if (writable.latitude == null || writable.longitude == null) {
     void geocodeListing(data.id);
   }
   return data;
 }
 
 export async function updateListing(id: string, input: Record<string, unknown>) {
+  const writable = pickListingWrites(input);
   const existing = await getListing(id);
   const manualOverrides = { ...(existing.manual_overrides as Record<string, boolean> ?? {}) };
-  for (const key of Object.keys(input)) {
-    if (input[key] !== undefined) manualOverrides[key] = true;
+  for (const key of Object.keys(writable)) {
+    if (writable[key] !== undefined) manualOverrides[key] = true;
   }
   const addressChanged = ADDRESS_FIELDS.some(
-    (field) => input[field] !== undefined && input[field] !== existing[field],
+    (field) => writable[field] !== undefined && writable[field] !== existing[field],
   );
   const coordinatesChanged = ['latitude', 'longitude'].some(
-    (field) => input[field] !== undefined && input[field] !== existing[field],
+    (field) => writable[field] !== undefined && writable[field] !== existing[field],
   );
-  const hasCompleteCoordinates = input.latitude != null && input.longitude != null;
+  const hasCompleteCoordinates = writable.latitude != null && writable.longitude != null;
   const shouldClearCoordinates = coordinatesChanged && !hasCompleteCoordinates;
   const needsGeocode = (addressChanged && !(coordinatesChanged && hasCompleteCoordinates))
     || shouldClearCoordinates;
   const updates = {
-    ...input,
+    ...writable,
     manual_overrides: manualOverrides,
     ...(needsGeocode
       ? {
@@ -306,6 +392,28 @@ export async function listListingMedia(listingId: string, approvedOnly = false) 
     return m;
   }));
   return items;
+}
+
+async function inspectStoredMedia(
+  objectKey: string,
+  mimeType: string,
+  declaredSizeBytes: number,
+): Promise<string | null> {
+  const actualSize = await readObjectSize(objectKey);
+  const sizeError = validateMediaContentSize(actualSize, declaredSizeBytes);
+  if (sizeError) return sizeError;
+
+  const prefix = await readObjectPrefix(objectKey);
+  return validateMediaContentBuffer(prefix, mimeType, declaredSizeBytes);
+}
+
+async function rejectInvalidStoredMedia(objectKey: string, message: string): Promise<never> {
+  try {
+    await deleteObject(objectKey);
+  } catch {
+    /* best-effort cleanup */
+  }
+  throw Object.assign(new Error(message), { status: 400, code: 'VALIDATION_ERROR' });
 }
 
 export async function requestMediaUpload(
@@ -372,6 +480,10 @@ export async function completeMediaUpload(listingId: string, mediaId: string, us
   if (media.uploaded_by !== userId) throw forbidden('Non autorisé');
   const exists = await objectExists(media.object_key);
   if (!exists) throw conflict('Upload introuvable dans R2', 'UPLOAD_NOT_FOUND');
+  const contentError = await inspectStoredMedia(media.object_key, media.mime_type, media.size_bytes);
+  if (contentError) {
+    await rejectInvalidStoredMedia(media.object_key, contentError);
+  }
   const now = new Date().toISOString();
   const { data, error: updateError } = await supabaseAdmin
     .from('listing_media')
@@ -405,8 +517,9 @@ export async function uploadMediaFile(listingId: string, mediaId: string, userId
   if (error || !media) throw notFound('Média introuvable');
   if (media.uploaded_by !== userId) throw forbidden('Non autorisé');
   if (media.upload_completed_at) throw conflict('Média déjà uploadé');
-  if (body.length > media.size_bytes) {
-    throw Object.assign(new Error('Fichier plus grand que la taille déclarée'), { status: 400, code: 'VALIDATION_ERROR' });
+  const contentError = validateMediaContentBuffer(body, media.mime_type, media.size_bytes);
+  if (contentError) {
+    throw Object.assign(new Error(contentError), { status: 400, code: 'VALIDATION_ERROR' });
   }
   await putObject(media.object_key, body, media.mime_type);
   return completeMediaUpload(listingId, mediaId, userId);
@@ -567,6 +680,10 @@ export async function completeProfilePhoto(userId: string, mediaId: string) {
   if (error || !media) throw notFound('Média introuvable');
   const exists = await objectExists(media.object_key);
   if (!exists) throw conflict('Upload introuvable', 'UPLOAD_NOT_FOUND');
+  const contentError = await inspectStoredMedia(media.object_key, media.mime_type, media.size_bytes);
+  if (contentError) {
+    await rejectInvalidStoredMedia(media.object_key, contentError);
+  }
   const { data: profile, error: profileError } = await supabaseAdmin
     .from('agents')
     .update({ profile_photo_media_id: mediaId })

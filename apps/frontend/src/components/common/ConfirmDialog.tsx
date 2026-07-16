@@ -1,3 +1,7 @@
+import { useEffect } from 'react';
+import { useFocusTrap } from '../../lib/useFocusTrap';
+import { ModalPortal } from './ModalPortal';
+
 type ConfirmDialogProps = {
   open: boolean;
   message: React.ReactNode;
@@ -16,33 +20,47 @@ export function ConfirmDialog({
   cancelLabel = 'Annuler',
   confirmTone = 'danger',
   wide = false,
-  onConfirm,
   onCancel,
+  onConfirm,
 }: ConfirmDialogProps) {
+  const containerRef = useFocusTrap(open);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onCancel();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onCancel]);
+
   if (!open) return null;
 
   return (
-    <div className="confirm-dialog-overlay" role="presentation" onClick={onCancel}>
-      <div
-        className={`confirm-dialog${wide ? ' confirm-dialog--wide' : ''}`}
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="confirm-dialog__message">{message}</div>
-        <div className="confirm-dialog__actions">
-          <button type="button" className="confirm-dialog__btn confirm-dialog__btn--cancel" onClick={onCancel}>
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            className={`confirm-dialog__btn confirm-dialog__btn--${confirmTone}`}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </button>
+    <ModalPortal>
+      <div className="confirm-dialog-overlay" role="presentation" onClick={onCancel}>
+        <div
+          ref={containerRef}
+          className={`confirm-dialog${wide ? ' confirm-dialog--wide' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="confirm-dialog__message">{message}</div>
+          <div className="confirm-dialog__actions">
+            <button type="button" className="confirm-dialog__btn confirm-dialog__btn--cancel" onClick={onCancel}>
+              {cancelLabel}
+            </button>
+            <button
+              type="button"
+              className={`confirm-dialog__btn confirm-dialog__btn--${confirmTone}`}
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

@@ -1,5 +1,5 @@
 import type { LeadListItem, TraitementStatut } from '@fast-rental/shared';
-import { AGENT_ARCHIVED_TRAITEMENT_STATUTS, referralUsernameFromNom } from '@fast-rental/shared';
+import { AGENT_ARCHIVED_TRAITEMENT_STATUTS, MAX_AGENT_CALLS, referralUsernameFromNom } from '@fast-rental/shared';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { getPagination } from '../../utils/pagination.js';
 import { emailService } from '../email/email.service.js';
@@ -253,7 +253,8 @@ export async function getAgentCalls(agentId: string) {
     .select('*')
     .eq('assigne_a', agentId)
     .or('traitement_statut.eq.assigné,traitement_statut.eq.contacté,traitement_statut.is.null')
-    .order('assigne_le', { ascending: false, nullsFirst: false });
+    .order('assigne_le', { ascending: false, nullsFirst: false })
+    .limit(MAX_AGENT_CALLS);
   if (error) throw error;
   return enrichLeads((data ?? []) as LeadListItem[]);
 }

@@ -13,6 +13,9 @@ import { LeadProgressControl } from '../agent/LeadProgressControl';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { useToast } from '../../components/common/ToastProvider';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { SanitizedInput } from '../../components/common/SanitizedField';
+import { parseRouteId } from '../../lib/formValidation';
+import { sanitizeFieldInput } from '../../lib/inputSanitize';
 import type { LeadListItem } from '@fast-rental/shared';
 
 type LeadsResponse = {
@@ -79,7 +82,6 @@ function LeadAssignBlock({
       setConfirmOpen(false);
       onAssigned();
     } catch (err) {
-      console.error('Lead assignment failed', err);
       const message = err instanceof ApiError ? err.message : 'Assignation impossible';
       toast(`⚠️ ${message}`);
       setConfirmOpen(false);
@@ -237,7 +239,15 @@ export function DemandesPanel() {
   }
 
   function updateArchiveFilter<K extends keyof ArchiveFilters>(key: K, value: ArchiveFilters[K]) {
-    setArchiveFilters((current) => ({ ...current, [key]: value }));
+    let next = value;
+    if (key === 'archivedFrom' || key === 'archivedTo') {
+      next = sanitizeFieldInput(String(value), 'dateIso', 10) as ArchiveFilters[K];
+    }
+    if (key === 'assignedTo') {
+      const raw = String(value);
+      next = (raw === '' || parseRouteId(raw) ? raw : '') as ArchiveFilters[K];
+    }
+    setArchiveFilters((current) => ({ ...current, [key]: next }));
   }
 
   if (isLoading) return <div className="panel-scroll empty">Chargement…</div>;
@@ -294,21 +304,23 @@ export function DemandesPanel() {
               )}
               <div className="form-field demandes-toolbar__filter">
                 <label htmlFor="demandes-archive-from-filter">Archivée du</label>
-                <input
+                <SanitizedInput
                   id="demandes-archive-from-filter"
-                  type="date"
+                  kind="dateIso"
+                  maxLength={10}
                   value={archiveFilters.archivedFrom}
-                  onChange={(e) => updateArchiveFilter('archivedFrom', e.target.value)}
+                  onChange={(value) => updateArchiveFilter('archivedFrom', value)}
                 />
               </div>
               <div className="form-field demandes-toolbar__filter">
                 <label htmlFor="demandes-archive-to-filter">Archivée au</label>
-                <input
+                <SanitizedInput
                   id="demandes-archive-to-filter"
-                  type="date"
+                  kind="dateIso"
+                  maxLength={10}
                   value={archiveFilters.archivedTo}
                   min={archiveFilters.archivedFrom || undefined}
-                  onChange={(e) => updateArchiveFilter('archivedTo', e.target.value)}
+                  onChange={(value) => updateArchiveFilter('archivedTo', value)}
                 />
               </div>
             </div>

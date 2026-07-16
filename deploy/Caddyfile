@@ -1,11 +1,50 @@
+{
+  servers {
+    timeouts {
+      read_body 2m
+      read_header 15s
+      write 2m
+      idle 30s
+    }
+    max_header_size 16KB
+  }
+}
+
 # Fast Rental API
+http://api.YOUR_DOMAIN.com {
+  redir https://api.YOUR_DOMAIN.com{uri} permanent
+}
+
 api.YOUR_DOMAIN.com {
+  @blocked_methods method TRACE TRACK CONNECT
+  respond @blocked_methods 405
+
+  tls {
+    protocols tls1.2 tls1.3
+  }
+
+  request_body {
+    max_size 260MB
+  }
+
   encode gzip
-  reverse_proxy 127.0.0.1:4000
+  reverse_proxy 127.0.0.1:4000 {
+    header_up -Forwarded
+    header_up X-Forwarded-Proto {scheme}
+    header_up X-Forwarded-Host {host}
+    transport http {
+      dial_timeout 5s
+      response_header_timeout 2m
+      keepalive 30s
+    }
+  }
   header {
+    -Server
     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    Content-Security-Policy "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     X-Content-Type-Options "nosniff"
     X-Frame-Options "DENY"
     Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
   }
 }

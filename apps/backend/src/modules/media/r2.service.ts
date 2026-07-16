@@ -50,6 +50,37 @@ export async function objectExists(objectKey: string) {
   }
 }
 
+export async function getObjectSize(objectKey: string): Promise<number> {
+  const response = await r2.send(new HeadObjectCommand({ Bucket: env.R2_BUCKET, Key: objectKey }));
+  return Number(response.ContentLength ?? 0);
+}
+
+export async function readObjectPrefix(objectKey: string, maxBytes: number): Promise<Buffer> {
+  const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+  const end = Math.max(0, maxBytes - 1);
+  const response = await r2.send(new GetObjectCommand({
+    Bucket: env.R2_BUCKET,
+    Key: objectKey,
+    Range: `bytes=0-${end}`,
+  }));
+  const body = response.Body;
+  if (!body) return Buffer.alloc(0);
+  const bytes = await body.transformToByteArray();
+  return Buffer.from(bytes);
+}
+
+export async function readObjectBytes(objectKey: string): Promise<Buffer> {
+  const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+  const response = await r2.send(new GetObjectCommand({
+    Bucket: env.R2_BUCKET,
+    Key: objectKey,
+  }));
+  const body = response.Body;
+  if (!body) return Buffer.alloc(0);
+  const bytes = await body.transformToByteArray();
+  return Buffer.from(bytes);
+}
+
 export async function deleteObject(objectKey: string) {
   await r2.send(new DeleteObjectCommand({ Bucket: env.R2_BUCKET, Key: objectKey }));
 }

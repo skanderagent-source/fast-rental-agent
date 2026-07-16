@@ -1,9 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/apiClient';
+import { listingDetailSchema } from '@fast-rental/shared';
+import type { z } from 'zod';
+import { api, sensitiveApi } from '../../lib/apiClient';
 import { useToast } from '../../components/common/ToastProvider';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { SanitizedInput, SanitizedTextarea } from '../../components/common/SanitizedField';
+import type { FieldKind } from '../../lib/inputSanitize';
+import {
+  formatCurrency,
+  formatZodIssues,
+  parseListingCreatePayload,
+  parseListingUpdatePayload,
+  parseRouteId,
+} from '../../lib/formValidation';
+import { parseApi } from '../../lib/parseApi';
+import { useBeforeUnload } from '../../lib/useBeforeUnload';
+import { useSubmitLock, OfflineError } from '../../lib/useSubmitLock';
 
 type ListingForm = {
   adresse: string;
@@ -89,7 +103,9 @@ function emptyForm(): ListingForm {
   };
 }
 
-function listingToForm(listing: Record<string, unknown>): ListingForm {
+type ListingDetail = z.infer<typeof listingDetailSchema>;
+
+function listingToForm(listing: ListingDetail): ListingForm {
   return {
     adresse: String(listing.adresse ?? ''),
     quartier: String(listing.quartier ?? ''),
@@ -102,22 +118,6 @@ function listingToForm(listing: Record<string, unknown>): ListingForm {
     notes: String(listing.notes ?? ''),
     latitude: listing.latitude != null ? String(listing.latitude) : '',
     longitude: listing.longitude != null ? String(listing.longitude) : '',
-  };
-}
-
-function formToPayload(form: ListingForm) {
-  return {
-    adresse: form.adresse,
-    quartier: form.quartier || null,
-    prix: form.prix ? Number(form.prix) : null,
-    taille: form.taille || null,
-    statut: form.statut,
-    electromenagers: form.electromenagers || null,
-    code_entree: form.code_entree || null,
-    concierge_tel: form.concierge_tel || null,
-    notes: form.notes || null,
-    latitude: form.latitude ? Number(form.latitude) : null,
-    longitude: form.longitude ? Number(form.longitude) : null,
   };
 }
 
@@ -137,7 +137,7 @@ function displayFormValue(key: keyof ListingForm, value: string) {
   const trimmed = value.trim();
   if (!trimmed) return '—';
   if (key === 'statut') return statutLabels[trimmed] ?? trimmed;
-  if (key === 'prix') return `$${Number(trimmed).toLocaleString('fr-CA')}`;
+  if (key === 'prix') return formatCurrency(trimmed) ?? trimmed;
   return trimmed;
 }
 
@@ -163,6 +163,20 @@ function getFormChanges(original: ListingForm, current: ListingForm) {
   }
   return changes;
 }
+
+const listingFieldMeta: Record<keyof ListingForm, { kind: FieldKind; maxLength: number; multiline?: boolean }> = {
+  adresse: { kind: 'address', maxLength: 500 },
+  quartier: { kind: 'plain', maxLength: 120 },
+  prix: { kind: 'money', maxLength: 6 },
+  taille: { kind: 'plain', maxLength: 30 },
+  statut: { kind: 'plain', maxLength: 30 },
+  electromenagers: { kind: 'plain', maxLength: 1000 },
+  code_entree: { kind: 'accessCode', maxLength: 200 },
+  concierge_tel: { kind: 'phone', maxLength: 30 },
+  notes: { kind: 'multiline', maxLength: 10000, multiline: true },
+  latitude: { kind: 'decimal', maxLength: 20 },
+  longitude: { kind: 'decimal', maxLength: 20 },
+};
 
 function ListingFormFields({ form, setForm }: { form: ListingForm; setForm: (f: ListingForm) => void }) {
   return (
@@ -204,20 +218,23 @@ function ListingFormFields({ form, setForm }: { form: ListingForm; setForm: (f: 
                       ))}
                     </select>
                   ) : multiline ? (
-                    <textarea
+                    <SanitizedTextarea
                       id={inputId}
+                      kind="multiline"
                       rows={4}
                       value={form[key]}
+                      maxLength={listingFieldMeta[key].maxLength}
                       placeholder={placeholder}
-                      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                      onChange={(value) => setForm({ ...form, [key]: value })}
                     />
                   ) : (
-                    <input
+                    <SanitizedInput
                       id={inputId}
-                      type={type ?? 'text'}
+                      kind={listingFieldMeta[key].kind}
                       value={form[key]}
+                      maxLength={listingFieldMeta[key].maxLength}
                       placeholder={placeholder}
-                      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                      onChange={(value) => setForm({ ...form, [key]: value })}
                     />
                   )}
                 </div>
@@ -329,8 +346,11 @@ export function AddListingPage() {
   const [form, setForm] = useState<ListingForm>(emptyForm());
   const [geocodeStatus, setGeocodeStatus] = useState<string | null>(null);
   const [addStep, setAddStep] = useState<0 | 1 | 2>(0);
+  const { locked: submitting, run: runSubmit } = useSubmitLock({ requireOnline: true });
 
   const filledFields = useMemo(() => getFilledFormFields(form), [form]);
+  const hasDraft = useMemo(() => filledFields.length > 0, [filledFields]);
+  useBeforeUnload(hasDraft);
 
   function cancelAdd() {
     setAddStep(0);
@@ -343,13 +363,24 @@ export function AddListingPage() {
   }
 
   async function applyAdd() {
-    const created = await api.post<{ geocoding_status?: string }>('/api/listings', formToPayload(form));
-    void queryClient.invalidateQueries({ queryKey: ['listings'] });
-    void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
-    setGeocodeStatus(created.geocoding_status ?? (form.latitude && form.longitude ? 'manual' : 'pending'));
-    toast('✅ Logement ajouté');
-    setAddStep(0);
-    setTimeout(() => navigate('/app/search'), 1200);
+    try {
+      await runSubmit(async () => {
+      const parsed = parseListingCreatePayload(form);
+      if (!parsed.success) {
+        toast(`⚠️ ${formatZodIssues(parsed.error.issues)}`);
+        return;
+      }
+      const created = await api.post<{ geocoding_status?: string }>('/api/listings', parsed.data);
+      void queryClient.invalidateQueries({ queryKey: ['listings'] });
+      void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
+      setGeocodeStatus(created.geocoding_status ?? (form.latitude && form.longitude ? 'manual' : 'pending'));
+      toast('✅ Logement ajouté');
+      setAddStep(0);
+      setTimeout(() => navigate('/app/search'), 1200);
+      });
+    } catch (err) {
+      if (err instanceof OfflineError) toast(`⚠️ ${err.message}`);
+    }
   }
 
   return (
@@ -403,6 +434,7 @@ export function AddListingPage() {
 
 export function EditListingPage() {
   const { id } = useParams<{ id: string }>();
+  const routeId = parseRouteId(id);
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -410,11 +442,15 @@ export function EditListingPage() {
   const [originalForm, setOriginalForm] = useState<ListingForm>(emptyForm());
   const [editStep, setEditStep] = useState<0 | 1 | 2>(0);
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
+  const { locked: submitting, run: runSubmit } = useSubmitLock({ requireOnline: true });
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['listing-edit', id],
-    queryFn: () => api.get<{ listing: Record<string, unknown> }>(`/api/listings/${id}`),
-    enabled: !!id,
+    queryKey: ['listing-edit', routeId],
+    queryFn: async () => {
+      const response = await api.get<{ listing: unknown }>(`/api/listings/${routeId}`);
+      return { listing: parseApi(listingDetailSchema, response.listing, 'Logement') };
+    },
+    enabled: !!routeId,
   });
 
   useEffect(() => {
@@ -426,6 +462,7 @@ export function EditListingPage() {
 
   const address = originalForm.adresse.trim() || form.adresse.trim();
   const formChanges = useMemo(() => getFormChanges(originalForm, form), [originalForm, form]);
+  useBeforeUnload(formChanges.length > 0);
 
   function cancelEditFlow() {
     setEditStep(0);
@@ -450,36 +487,54 @@ export function EditListingPage() {
   }
 
   async function applyChanges() {
-    if (!id) return;
-    await api.patch(`/api/listings/${id}`, formToPayload(form));
-    void queryClient.invalidateQueries({ queryKey: ['listings'] });
-    void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
-    void queryClient.invalidateQueries({ queryKey: ['listing-edit', id] });
-    toast('✅ Logement mis à jour');
-    setEditStep(0);
-    navigate('/app/search');
+    if (!routeId) return;
+    try {
+      await runSubmit(async () => {
+        const parsed = parseListingUpdatePayload(form);
+        if (!parsed.success) {
+          toast(`⚠️ ${formatZodIssues(parsed.error.issues)}`);
+          return;
+        }
+        await api.patch(`/api/listings/${routeId}`, parsed.data);
+        void queryClient.invalidateQueries({ queryKey: ['listings'] });
+        void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
+        void queryClient.invalidateQueries({ queryKey: ['listing-edit', routeId] });
+        toast('✅ Logement mis à jour');
+        setEditStep(0);
+        navigate('/app/search');
+      });
+    } catch (err) {
+      if (err instanceof OfflineError) toast(`⚠️ ${err.message}`);
+    }
   }
 
   async function confirmDelete() {
-    if (!id) return;
-    await api.delete(`/api/listings/${id}`);
-    void queryClient.invalidateQueries({ queryKey: ['listings'] });
-    void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
-    toast('Logement supprimé');
-    setDeleteStep(0);
-    navigate('/app/search');
+    if (!routeId) return;
+    try {
+      await runSubmit(async () => {
+        await sensitiveApi.delete(`/api/listings/${routeId}`, 'listing.delete', routeId);
+        void queryClient.invalidateQueries({ queryKey: ['listings'] });
+        void queryClient.invalidateQueries({ queryKey: ['listings-map'] });
+        toast('Logement supprimé');
+        setDeleteStep(0);
+        navigate('/app/search');
+      });
+    } catch (err) {
+      if (err instanceof OfflineError) toast(`⚠️ ${err.message}`);
+    }
   }
 
+  if (!routeId) return <div className="panel-scroll empty">Logement introuvable</div>;
   if (isLoading) return <div className="panel-scroll empty">Chargement…</div>;
-  if (error || !id) return <div className="panel-scroll empty">Logement introuvable</div>;
+  if (error) return <div className="panel-scroll empty">Logement introuvable</div>;
 
   return (
     <>
       <ListingFormPage
         title="Modifier le logement"
         subtitle="Mettez à jour les informations affichées aux agents."
-        geocodeStatus={String(data?.listing?.geocoding_status ?? '')}
-        geocodeError={data?.listing?.geocoding_error ? String(data.listing.geocoding_error) : null}
+        geocodeStatus={data?.listing.geocoding_status ?? null}
+        geocodeError={data?.listing.geocoding_error ?? null}
         editActions={{
           onDelete: startDelete,
           onModify: startModify,

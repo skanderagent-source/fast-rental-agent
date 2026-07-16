@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../../lib/apiClient';
+import { api, ApiError } from '../../lib/apiClient';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { useToast } from '../../components/common/ToastProvider';
+import { PasswordInput } from '../../components/common/PasswordInput';
+import { SanitizedInput } from '../../components/common/SanitizedField';
+import { useRateLimitedAction } from '../../lib/useRateLimitedAction';
 import { requestPasswordReset } from './authApi';
 import { validateLogin } from './validation';
+import { isOnline, OFFLINE_MESSAGE } from '../../lib/onlineStatus';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -17,9 +21,14 @@ export function LoginPage() {
   const sessionExpired = searchParams.get('expired') === '1';
   const { refreshProfile } = useAuth();
   const toast = useToast();
+  const passwordResetLimit = useRateLimitedAction('fast-rental:password-reset', 60_000);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!isOnline()) {
+      setError(OFFLINE_MESSAGE);
+      return;
+    }
     const validationError = validateLogin(email, password);
     if (validationError) {
       setError(validationError === 'Email requis' ? 'Email et mot de passe requis' : validationError);
@@ -34,12 +43,28 @@ export function LoginPage() {
       return;
     }
     try {
-      await refreshProfile();
+      const profile = await refreshProfile();
+      if (profile.must_change_password) {
+        navigate('/auth/force-password-change', { replace: true });
+        return;
+      }
       await api.post('/api/me/activity/login');
       navigate('/app/search', { replace: true });
-    } catch {
-      setError('Profil introuvable. Contactez votre administrateur.');
-      await supabase.auth.signOut();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'REQUEST_ABORTED') {
+        setError('Connexion interrompue. Réessaie une fois.');
+      } else if (err instanceof ApiError && err.code === 'INVALID_API_RESPONSE') {
+        setError('Réponse profil invalide du serveur. Contactez un administrateur.');
+      } else if (err instanceof ApiError && err.status === 403) {
+        setError('Profil introuvable. Contactez votre administrateur.');
+      } else if (err instanceof ApiError && err.status === 401) {
+        setError('Session refusée par le serveur. Recharge la page et réessaie.');
+      } else {
+        setError('Impossible de charger ton profil. Vérifie que l\'API tourne et réessaie.');
+      }
+      if (!(err instanceof ApiError && (err.code === 'REQUEST_ABORTED' || err.code === 'INVALID_API_RESPONSE'))) {
+        await supabase.auth.signOut();
+      }
     } finally {
       setLoading(false);
     }
@@ -50,12 +75,19 @@ export function LoginPage() {
       setError('Entre ton email d\'abord, puis clique « Mot de passe oublié »');
       return;
     }
-    const { error: resetError } = await requestPasswordReset(
-      email,
-      `${window.location.origin}/auth/reset-password`,
-    );
-    if (resetError) setError('Erreur — vérifie ton email');
-    else toast('✅ Email de réinitialisation envoyé !');
+    if (passwordResetLimit.blocked) {
+      setError(`Réessaie dans ${Math.ceil(passwordResetLimit.remainingMs / 1000)} secondes`);
+      return;
+    }
+    const sent = await passwordResetLimit.run(async () => {
+      await requestPasswordReset(
+        email,
+        `${window.location.origin}/auth/reset-password`,
+      );
+    });
+    if (!sent) return;
+    toast('Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.');
+    setError('');
   }
 
   return (
@@ -84,11 +116,12 @@ export function LoginPage() {
         <form className="login-form" onSubmit={onSubmit}>
           <div className="login-field">
             <label htmlFor="login-email">Email</label>
-            <input
+            <SanitizedInput
               id="login-email"
-              type="email"
+              kind="email"
+              maxLength={320}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={setEmail}
               autoComplete="email"
               placeholder="agent@example.com"
               disabled={loading}
@@ -97,11 +130,10 @@ export function LoginPage() {
 
           <div className="login-field">
             <label htmlFor="login-password">Mot de passe</label>
-            <input
+            <PasswordInput
               id="login-password"
-              type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               autoComplete="current-password"
               placeholder="••••••••"
               disabled={loading}
@@ -123,9 +155,11 @@ export function LoginPage() {
             type="button"
             className="login-forgot"
             onClick={() => void forgotPassword()}
-            disabled={loading}
+            disabled={loading || passwordResetLimit.blocked}
           >
-            Mot de passe oublié ?
+            {passwordResetLimit.blocked
+              ? `Réessayer dans ${Math.ceil(passwordResetLimit.remainingMs / 1000)}s`
+              : 'Mot de passe oublié ?'}
           </button>
         </form>
       </div>

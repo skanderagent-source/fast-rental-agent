@@ -34,10 +34,12 @@ function chain(resolved: { data?: unknown; error?: unknown } = { data: null, err
 }
 
 describe('health', () => {
-  it('returns ok', async () => {
+  it('returns ok without exposing dependency details', async () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(JSON.stringify(res.body)).not.toMatch(/supabase|r2|postgres|storage/i);
   });
 });
 
@@ -48,6 +50,17 @@ describe('auth middleware', () => {
     const res = await request(app).get('/api/me');
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('rejects JWTs with disallowed signing algorithms before provider lookup', async () => {
+    const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const noneAlgToken = `${encode({ alg: 'none', typ: 'JWT' })}.${encode({ sub: 'user-1' })}.sig`;
+
+    const res = await request(app).get('/api/me').set('Authorization', `Bearer ${noneAlgToken}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+    expect(mockGetUser).not.toHaveBeenCalled();
   });
 
   it('rejects inactive user', async () => {
@@ -62,7 +75,7 @@ describe('admin routes', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('rejects user creation without auth', async () => {
-    const res = await request(app).post('/api/users').send({ nom: 'Test', email: 'test@example.com', password: 'secret123', role: 'agent' });
+    const res = await request(app).post('/api/users').send({ nom: 'Test', email: 'test@example.com', password: 'Secret12345', role: 'agent' });
     expect(res.status).toBe(401);
   });
 
@@ -119,7 +132,7 @@ describe('admin routes', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', 'Bearer fake-token')
-      .send({ nom: 'New Agent', email: 'newagent@test.com', password: 'secret123', role: 'agent' });
+      .send({ nom: 'New Agent', email: 'newagent@test.com', password: 'Secret12345', role: 'agent' });
     expect(res.status).toBe(200);
     expect(res.body.data.email).toBe('newagent@test.com');
   });
@@ -129,7 +142,7 @@ describe('admin routes', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', 'Bearer fake-token')
-      .send({ nom: 'Test', email: 'test@example.com', password: 'secret123', role: 'agent' });
+      .send({ nom: 'Test', email: 'test@example.com', password: 'Secret12345', role: 'agent' });
     expect(res.status).toBe(403);
   });
 });

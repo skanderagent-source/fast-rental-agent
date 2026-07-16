@@ -1,4 +1,9 @@
-import { isValidReferralUsername, normalizeReferralUsername, referralSlugFromEmail } from '@fast-rental/shared';
+import {
+  isValidReferralUsername,
+  MAX_USERS_LIST,
+  normalizeReferralUsername,
+  referralUsernameFromNom,
+} from '@fast-rental/shared';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { emailService } from '../email/email.service.js';
 import { logActivity } from '../activity/activity.service.js';
@@ -13,7 +18,11 @@ async function assertReferralSlugAvailable(slug: string, excludeUserId?: string)
 }
 
 export async function listUsers() {
-  const { data, error } = await supabaseAdmin.from('agents').select('*').order('created_at');
+  const { data, error } = await supabaseAdmin
+    .from('agents')
+    .select('*')
+    .order('created_at')
+    .limit(MAX_USERS_LIST);
   if (error) throw error;
   return data ?? [];
 }
@@ -34,9 +43,12 @@ export async function createUser(input: {
   if (error) throw error;
 
   const telephone = input.telephone?.trim() || null;
-  const referral_slug = referralSlugFromEmail(input.email);
-  if (!isValidReferralUsername(referral_slug)) {
-    throw Object.assign(new Error('Email invalide pour générer un nom d\'utilisateur'), { status: 400, code: 'VALIDATION_ERROR' });
+  const referral_slug = referralUsernameFromNom(input.nom);
+  if (!referral_slug) {
+    throw Object.assign(
+      new Error('Le nom doit être un identifiant valide (a-z, 0-9, 3–32 caractères)'),
+      { status: 400, code: 'VALIDATION_ERROR' },
+    );
   }
 
   const { data: existingSlug } = await supabaseAdmin
@@ -56,7 +68,7 @@ export async function createUser(input: {
       role: input.role,
       actif: true,
       must_change_password: true,
-      referral_slug: referralSlugFromEmail(input.email),
+      referral_slug,
     })
     .select('*')
     .single();
@@ -84,8 +96,8 @@ export async function updateUserReferralSlug(
   actorId: string,
   actorNom: string,
 ) {
-  const referral_slug = normalizeReferralUsername(referralSlug);
-  if (!isValidReferralUsername(referral_slug)) {
+  const username = normalizeReferralUsername(referralSlug);
+  if (!isValidReferralUsername(username)) {
     throw Object.assign(new Error('Nom d\'utilisateur invalide'), { status: 400, code: 'VALIDATION_ERROR' });
   }
 
@@ -95,13 +107,14 @@ export async function updateUserReferralSlug(
     .eq('id', id)
     .single();
   if (currentError || !current) throw Object.assign(new Error('Utilisateur introuvable'), { status: 404, code: 'NOT_FOUND' });
-  if (current.referral_slug === referral_slug) return current;
+  const currentUsername = referralUsernameFromNom(current.nom);
+  if (currentUsername === username) return current;
 
-  await assertReferralSlugAvailable(referral_slug, id);
+  await assertReferralSlugAvailable(username, id);
 
   const { data, error } = await supabaseAdmin
     .from('agents')
-    .update({ referral_slug })
+    .update({ nom: username, referral_slug: username })
     .eq('id', id)
     .select('*')
     .single();
@@ -111,7 +124,7 @@ export async function updateUserReferralSlug(
     agentId: actorId,
     agentNom: actorNom,
     typeAction: 'compte_modifie',
-    details: `Nom d'utilisateur de ${current.nom}: ${current.referral_slug} → ${referral_slug}`,
+    details: `Nom d'utilisateur de ${current.nom}: ${currentUsername ?? current.nom} → ${username}`,
   });
 
   return data;

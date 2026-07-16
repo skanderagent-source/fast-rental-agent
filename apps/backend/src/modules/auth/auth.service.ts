@@ -1,22 +1,35 @@
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
+import { AGENT_PROFILE_SELECT, toAgentProfile } from '@fast-rental/shared';
+import { forbidden } from '../../utils/httpErrors.js';
 import { logActivity, shouldLogLogin } from '../activity/activity.service.js';
 
 export async function getMe(userId: string, userEmail: string) {
   const { data: profile, error } = await supabaseAdmin
     .from('agents')
-    .select('*')
+    .select(AGENT_PROFILE_SELECT)
     .eq('id', userId)
     .single();
   if (error || !profile) throw Object.assign(new Error('Profil introuvable'), { status: 403, code: 'FORBIDDEN' });
 
-  if (profile.email !== userEmail) {
+  const row = profile as unknown as {
+    id: string;
+    email: string;
+    nom: string;
+    telephone: string | null;
+    role: 'admin' | 'agent';
+    actif: boolean;
+    must_change_password: boolean;
+    referral_slug: string;
+  };
+
+  if (row.email !== userEmail) {
     await supabaseAdmin.from('agents').update({ email: userEmail }).eq('id', userId);
-    profile.email = userEmail;
+    row.email = userEmail;
   }
 
   return {
     user: { id: userId, email: userEmail },
-    profile,
+    profile: toAgentProfile(row),
   };
 }
 
@@ -28,6 +41,16 @@ export async function updateProfile(
     profilePhotoMediaId?: string | null;
   },
 ) {
+  if (input.profilePhotoMediaId !== undefined && input.profilePhotoMediaId !== null) {
+    const { data: media, error: mediaError } = await supabaseAdmin
+      .from('user_media')
+      .select('id')
+      .eq('id', input.profilePhotoMediaId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (mediaError) throw mediaError;
+    if (!media) throw forbidden('Photo de profil invalide');
+  }
   const updates: Record<string, unknown> = {};
   if (input.nom !== undefined) updates.nom = input.nom;
   if (input.telephone !== undefined) updates.telephone = input.telephone;
@@ -36,10 +59,10 @@ export async function updateProfile(
     .from('agents')
     .update(updates)
     .eq('id', userId)
-    .select('*')
+    .select(AGENT_PROFILE_SELECT)
     .single();
-  if (error) throw error;
-  return data;
+  if (error || !data) throw error;
+  return toAgentProfile(data as unknown as Record<string, unknown>);
 }
 
 export async function logLoginActivity(agentId: string, agentNom: string) {

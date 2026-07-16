@@ -21,7 +21,11 @@ export async function getAdminStats() {
 }
 
 export async function getAgentStats() {
-  const { data: agents } = await supabaseAdmin.from('agents').select('*').order('nom');
+  const { data: agents } = await supabaseAdmin
+    .from('agents')
+    .select('*')
+    .order('nom')
+    .limit(500);
   const stats = [];
 
   for (const agent of agents ?? []) {

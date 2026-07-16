@@ -92,7 +92,16 @@ describe('media API', () => {
       if (table === 'listing_media') {
         const chain = mockChain({
           data: [
-            { id: 'm1', status: 'approved', type: 'image', upload_completed_at: '2026-01-01', object_key: 'k1', original_filename: 'a.jpg' },
+            {
+              id: 'm1',
+              status: 'approved',
+              type: 'image',
+              upload_completed_at: '2026-01-01',
+              object_key: 'listings/l1/uuid/a.jpg',
+              bucket: 'private-bucket',
+              uploaded_by: 'agent-secret-id',
+              original_filename: 'a.jpg',
+            },
           ],
           error: null,
         });
@@ -104,11 +113,14 @@ describe('media API', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.media[0].viewUrl).toContain('https://r2.example/view');
     expect(res.body.data.media[0].thumbnailUrl).toBeTruthy();
+    expect(res.body.data.media[0].object_key).toBeUndefined();
+    expect(res.body.data.media[0].bucket).toBeUndefined();
+    expect(res.body.data.media[0].uploaded_by).toBeUndefined();
   });
 
   it('blocks public download for non-approved media', async () => {
     mockFrom.mockImplementation(() => mockChain({
-      data: { id: 'm1', status: 'pending', object_key: 'k1', original_filename: 'a.jpg' },
+      data: { id: 'm1', status: 'pending', object_key: 'listings/l1/uuid/a.jpg', original_filename: 'a.jpg' },
       error: null,
     }));
     const res = await request(app).get('/api/listings/media/00000000-0000-4000-8000-000000000001/download-url');
@@ -140,7 +152,7 @@ describe('media API', () => {
     });
     const res = await request(app)
       .post('/api/listings/media/00000000-0000-4000-8000-000000000001/approve')
-      .set('Authorization', 'Bearer t');
+      .set('Authorization', 'Bearer fake-token');
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('approved');
   });
@@ -158,7 +170,7 @@ describe('media API', () => {
         return mockChain({
           data: {
             id: 'm1',
-            object_key: 'k1',
+            object_key: 'listings/l1/uuid/a.jpg',
             uploaded_by: 'agent-1',
             status: 'approved',
           },
@@ -169,7 +181,8 @@ describe('media API', () => {
     });
     const res = await request(app)
       .delete('/api/listings/media/00000000-0000-4000-8000-000000000001')
-      .set('Authorization', 'Bearer t');
+      .set('Authorization', 'Bearer t')
+      .set('X-Action-Token', 'a'.repeat(43));
     expect(res.status).toBe(200);
   });
 
@@ -178,7 +191,7 @@ describe('media API', () => {
     mockFrom.mockImplementation(() => mockChain({
       data: {
         id: 'm1',
-        object_key: 'k1',
+        object_key: 'listings/l1/uuid/a.jpg',
         uploaded_by: 'agent-1',
         status: 'approved',
       },
@@ -186,15 +199,27 @@ describe('media API', () => {
     }));
     const res = await request(app)
       .delete('/api/listings/media/00000000-0000-4000-8000-000000000001')
-      .set('Authorization', 'Bearer t');
+      .set('Authorization', 'Bearer t')
+      .set('X-Action-Token', 'a'.repeat(43));
     expect(res.status).toBe(403);
+  });
+
+  it('rejects multipart proxy uploads', async () => {
+    authAs(mockGetUser, mockFrom, { id: 'u1', role: 'agent' });
+    const res = await request(app)
+      .put('/api/listings/00000000-0000-4000-8000-000000000001/media/00000000-0000-4000-8000-000000000002/file')
+      .set('Authorization', 'Bearer t')
+      .set('Content-Type', 'multipart/form-data; boundary=test')
+      .send('ignored');
+    expect(res.status).toBe(415);
+    expect(res.body.error.code).toBe('UNSUPPORTED_MEDIA_TYPE');
   });
 
   it('reorders listing media for agent', async () => {
     const listingId = '00000000-0000-4000-8000-000000000001';
     const mediaRows = [
-      { id: '00000000-0000-4000-8000-000000000011', listing_id: listingId, sort_order: 0, uploaded_by: 'agent-1', upload_completed_at: '2026-01-01', status: 'approved', object_key: 'k1', original_filename: 'a.jpg', type: 'image' },
-      { id: '00000000-0000-4000-8000-000000000012', listing_id: listingId, sort_order: 1, uploaded_by: 'agent-1', upload_completed_at: '2026-01-02', status: 'approved', object_key: 'k2', original_filename: 'b.jpg', type: 'image' },
+      { id: '00000000-0000-4000-8000-000000000011', listing_id: listingId, sort_order: 0, uploaded_by: 'agent-1', upload_completed_at: '2026-01-01', status: 'approved', object_key: 'listings/l1/uuid/a.jpg', original_filename: 'a.jpg', type: 'image' },
+      { id: '00000000-0000-4000-8000-000000000012', listing_id: listingId, sort_order: 1, uploaded_by: 'agent-1', upload_completed_at: '2026-01-02', status: 'approved', object_key: 'listings/l1/uuid/b.jpg', original_filename: 'b.jpg', type: 'image' },
     ];
     mockGetUser.mockResolvedValue({
       data: { user: { id: 'agent-1', email: 'agent@test.com' } },

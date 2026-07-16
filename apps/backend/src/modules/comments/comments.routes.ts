@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { createCommentSchema } from '@fast-rental/shared';
 import { requireAuth } from '../../middleware/auth.js';
+import { requireActionToken } from '../../middleware/requireActionToken.js';
 import { validateRequest } from '../../middleware/validateRequest.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { paramId } from '../../utils/params.js';
@@ -20,7 +21,7 @@ router.post('/listings/:id/comments', requireAuth, validateRequest(createComment
   res.json({ data });
 }));
 
-router.delete('/:id', requireAuth, asyncHandler(async (req, res) => {
+router.delete('/:id', requireAuth, requireActionToken('comment.delete', 'id'), asyncHandler(async (req, res) => {
   const user = res.locals.user as { id: string };
   const profile = res.locals.profile as { role: string };
   const data = await deleteComment(paramId(req.params.id), user.id, profile.role === 'admin');

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { LeadListItem, TraitementStatut } from '@fast-rental/shared';
+import { parseTraitementStatut, TRAITEMENT_STATUTS, type LeadListItem, type TraitementStatut } from '@fast-rental/shared';
 import { api, ApiError } from '../../lib/apiClient';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { useToast } from '../../components/common/ToastProvider';
@@ -11,7 +11,7 @@ type Props = {
 
 export function LeadProgressControl({ lead, onUpdated }: Props) {
   const toast = useToast();
-  const saved = (lead.traitement_statut ?? 'assigné') as TraitementStatut;
+  const saved = parseTraitementStatut(lead.traitement_statut);
   const [selected, setSelected] = useState<TraitementStatut>(saved);
   const [confirmArchive, setConfirmArchive] = useState<'réglé' | 'refusé' | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -60,7 +60,12 @@ export function LeadProgressControl({ lead, onUpdated }: Props) {
         id={`progress-${lead.id}`}
         value={selected}
         disabled={submitting}
-        onChange={(e) => setSelected(e.target.value as TraitementStatut)}
+        onChange={(e) => {
+          const value = e.target.value;
+          if ((TRAITEMENT_STATUTS as readonly string[]).includes(value)) {
+            setSelected(value as TraitementStatut);
+          }
+        }}
       >
         <option value="assigné">Assigné</option>
         <option value="contacté">Contacté</option>
@@ -74,7 +79,7 @@ export function LeadProgressControl({ lead, onUpdated }: Props) {
           disabled={!changed || submitting}
           onClick={handleConfirmClick}
         >
-          Confirmer
+          {submitting ? 'Envoi…' : 'Confirmer'}
         </button>
       </div>
       <ConfirmDialog

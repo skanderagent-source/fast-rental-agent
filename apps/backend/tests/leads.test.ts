@@ -39,6 +39,9 @@ vi.mock('../src/config/env.js', () => ({
     FRONTEND_ORIGIN: 'http://localhost:5173',
     RATE_LIMIT_PUBLIC_WINDOW_MS: 60000,
     RATE_LIMIT_PUBLIC_MAX: 30,
+    RATE_LIMIT_API_WINDOW_MS: 60000,
+    RATE_LIMIT_API_MAX: 300,
+    NODE_ENV: 'test',
     R2_BUCKET: 'test',
     R2_SIGNED_DOWNLOAD_EXPIRES_SECONDS: 3600,
   },
@@ -89,7 +92,7 @@ describe('leads API', () => {
 
     const res = await request(app)
       .post('/api/leads/00000000-0000-4000-8000-000000000099/assign')
-      .set('Authorization', 'Bearer t')
+      .set('Authorization', 'Bearer fake-token')
       .send({ agentId: agentUuid });
     expect(res.status).toBe(200);
     expect(res.body.data.statut).toBe('archivé');
@@ -247,6 +250,41 @@ describe('leads API', () => {
     expect(inFilter).toHaveBeenCalledWith('traitement_statut', ['réglé', 'refusé']);
     expect(gte).toHaveBeenCalledWith('last_agent_update_at', expect.any(String));
     expect(res.body.data.items).toHaveLength(1);
+  });
+
+  it('rejects lead progress updates from non-assigned agents', async () => {
+    const agentUuid = '00000000-0000-4000-8000-000000000002';
+    const otherAgentUuid = '00000000-0000-4000-8000-000000000003';
+    const leadId = '00000000-0000-4000-8000-000000000099';
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: agentUuid, email: 'agent@test.com' } },
+      error: null,
+    });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'agents') {
+        return mockChain({ data: { id: agentUuid, nom: 'Agent', actif: true, role: 'agent' }, error: null });
+      }
+      if (table === 'demandes_clients') {
+        return mockChain({
+          data: {
+            id: leadId,
+            assigne_a: otherAgentUuid,
+            statut: 'assigné',
+            traitement_statut: 'contacté',
+          },
+          error: null,
+        });
+      }
+      return mockChain({ data: [], error: null });
+    });
+
+    const res = await request(app)
+      .patch(`/api/leads/${leadId}/progress`)
+      .set('Authorization', 'Bearer t')
+      .send({ traitementStatut: 'réglé' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
   });
 
   it('finalizes lead progress with statut archivé and archived_at', async () => {

@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { Download, Trash2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '../../lib/apiClient';
+import { api, ApiError, sensitiveApi } from '../../lib/apiClient';
 import { esc, formatEventDate, statusLabel } from '../../lib/format';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { useToast } from '../../components/common/ToastProvider';
 import { ApplicationMessageModal } from '../../components/listings/ApplicationMessageModal';
 import { FacebookAdModal } from '../../components/listings/FacebookAdModal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { SanitizedInput, SanitizedTextarea } from '../../components/common/SanitizedField';
+import { parseCommentPayload } from '../../lib/formValidation';
+import { sanitizeFieldInput } from '../../lib/inputSanitize';
 import { MediaLightbox } from '../../components/common/MediaLightbox';
 import type { Listing, ListingMedia } from '@fast-rental/shared';
 import {
@@ -18,7 +21,15 @@ import {
   MAX_VIDEO_DURATION_SECONDS,
 } from '@fast-rental/shared';
 import { readVideoDurationSeconds } from '../../lib/media';
+import { sanitizeFilenameForDisplay, validateMediaFileForUpload } from '../../lib/mediaUpload';
 import { buildListingReferralUrl, copyTextToClipboard } from '../../lib/referral';
+import { sanitizeEnumParam, sanitizeFreeTextParam } from '../../lib/searchParams';
+import { isSafeMediaUrl, openUrlSafely, safeMediaSrc } from '../../lib/urlSafety';
+import {
+  LISTING_FILTER_SOURCES,
+  LISTING_SIZE_VALUES,
+  LISTING_STATUSES,
+} from '@fast-rental/shared';
 
 type ListingsResponse = {
   items: Listing[];
@@ -27,11 +38,11 @@ type ListingsResponse = {
 
 export function SearchPanel() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [q, setQ] = useState(searchParams.get('q') ?? '');
-  const [quartier, setQuartier] = useState(searchParams.get('quartier') ?? '');
-  const [statut, setStatut] = useState(searchParams.get('statut') ?? '');
-  const [taille, setTaille] = useState(searchParams.get('taille') ?? '');
-  const [source, setSource] = useState(searchParams.get('source') ?? '');
+  const [q, setQ] = useState(() => sanitizeFreeTextParam(searchParams.get('q'), 200));
+  const [quartier, setQuartier] = useState(() => sanitizeFreeTextParam(searchParams.get('quartier'), 120));
+  const [statut, setStatut] = useState(() => sanitizeEnumParam(searchParams.get('statut'), LISTING_STATUSES));
+  const [taille, setTaille] = useState(() => sanitizeEnumParam(searchParams.get('taille'), LISTING_SIZE_VALUES));
+  const [source, setSource] = useState(() => sanitizeEnumParam(searchParams.get('source'), LISTING_FILTER_SOURCES));
   const [debouncedQ, setDebouncedQ] = useState(q);
   const [openId, setOpenId] = useState<string | null>(null);
   const [actionModal, setActionModal] = useState<{ listing: Listing; prefix: 'En application' | 'Request of approval' } | null>(null);
@@ -82,19 +93,21 @@ export function SearchPanel() {
       <div className="search-toolbar">
         <div className="search-toolbar__search">
           <label className="search-filter-label" htmlFor="search-q">Recherche</label>
-          <input
+          <SanitizedInput
             id="search-q"
             className="search-input search-input--toolbar"
+            kind="search"
+            maxLength={120}
             placeholder="Adresse, quartier..."
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={setQ}
             aria-label="Rechercher un logement"
           />
         </div>
         <div className="search-filters">
           <div className="search-filter-field">
             <label className="search-filter-label" htmlFor="filter-quartier">Quartier</label>
-            <select id="filter-quartier" className="search-filter-select" value={quartier} onChange={(e) => setQuartier(e.target.value)}>
+            <select id="filter-quartier" className="search-filter-select" value={quartier} onChange={(e) => setQuartier(sanitizeFieldInput(e.target.value, 'plain', 120))}>
               <option value="">Tous</option>
               {areas.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
@@ -255,7 +268,7 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
 
     void (async () => {
       try {
-        await api.delete(`/api/listings/media/${deleted.id}`);
+        await sensitiveApi.delete(`/api/listings/media/${deleted.id}`, 'media.delete', deleted.id);
         toast('Média supprimé');
       } catch (err) {
         const message = err instanceof ApiError ? err.message : 'Suppression impossible';
@@ -274,10 +287,17 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
       return false;
     }
 
+    const validated = await validateMediaFileForUpload(type, file);
+    if (!validated.ok) {
+      toast(`⚠️ ${validated.error}`);
+      return false;
+    }
+    const uploadFile = validated.file;
+
     let durationSeconds: number | undefined;
     if (type === 'video') {
       try {
-        durationSeconds = await readVideoDurationSeconds(file);
+        durationSeconds = await readVideoDurationSeconds(uploadFile);
       } catch {
         toast('⚠️ Impossible de lire la durée de la vidéo');
         return false;
@@ -294,19 +314,21 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
         uploadUrl: string;
         uploadMode: 'proxy' | 'signed';
       }>(`/api/listings/${listing.id}/media/upload-url`, {
-        filename: file.name,
-        mimeType: file.type,
-        sizeBytes: file.size,
+        filename: validated.filename,
+        mimeType: validated.mimeType,
+        sizeBytes: uploadFile.size,
         type,
         ...(durationSeconds != null ? { durationSeconds } : {}),
       });
       if (uploadMeta.uploadMode === 'proxy') {
-        await api.uploadFile(`/api/listings/${listing.id}/media/${uploadMeta.mediaId}/file`, file);
+        await api.uploadFile(`/api/listings/${listing.id}/media/${uploadMeta.mediaId}/file`, uploadFile);
+      } else if (!isSafeMediaUrl(uploadMeta.uploadUrl)) {
+        throw new ApiError(400, 'UPLOAD_URL_UNSAFE', 'URL d’envoi invalide');
       } else {
         const uploadResponse = await fetch(uploadMeta.uploadUrl, {
           method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type },
+          body: uploadFile,
+          headers: { 'Content-Type': validated.mimeType },
         });
         if (!uploadResponse.ok) {
           throw new ApiError(uploadResponse.status, 'UPLOAD_FAILED', 'Échec de l’envoi du fichier');
@@ -360,7 +382,11 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
   }
 
   const full = detail?.listing ?? listing;
-  const thumbnail = detail?.media?.find((m) => m.upload_completed_at && m.type === 'image' && m.viewUrl);
+  const thumbnailUrl = safeMediaSrc(
+    detail?.media?.find((m) => m.upload_completed_at && m.type === 'image' && m.viewUrl)?.viewUrl
+    ?? listing.cover_image_url
+    ?? null,
+  );
   const approvedMediaCount = listing.approved_media_count ?? 0;
   const approvedImageCount = listing.approved_image_count ?? 0;
   const approvedVideoCount = Math.max(0, approvedMediaCount - approvedImageCount);
@@ -380,8 +406,8 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
         }}
       >
         <div className="inventory-listing-photo">
-          {thumbnail?.viewUrl ? (
-            <img src={thumbnail.viewUrl} alt={listing.adresse} loading="lazy" />
+          {thumbnailUrl ? (
+            <img src={thumbnailUrl} alt={listing.adresse} loading="lazy" />
           ) : (
             <div className="inventory-photo-placeholder">
               <span className="inventory-photo-placeholder__icon" aria-hidden>
@@ -514,7 +540,7 @@ function ListingCard({ listing, open, onToggle, toast, profile, isAdmin, onOpenA
         open={!!previewMedia}
         url={previewMedia?.viewUrl}
         type={previewMedia?.type === 'video' ? 'video' : 'image'}
-        alt={previewMedia?.original_filename}
+        alt={previewMedia ? sanitizeFilenameForDisplay(previewMedia.original_filename) : undefined}
         onClose={() => setPreviewMedia(null)}
       />
     </article>
@@ -542,25 +568,31 @@ function MediaTile({
   onDelete: () => void;
   onPreview: () => void;
 }) {
+  const mediaSrc = safeMediaSrc(media.viewUrl);
+
   async function download() {
-    const { url } = await api.get<{ url: string }>(`/api/listings/media/${media.id}/download-url`);
-    window.open(url, '_blank');
+    try {
+      const { url } = await api.get<{ url: string }>(`/api/listings/media/${media.id}/download-url`);
+      openUrlSafely(url);
+    } catch {
+      /* ignore failed download */
+    }
   }
 
   return (
     <div className="media-tile">
       <div className="media-tile__media">
         {media.type === 'image' ? (
-          media.viewUrl ? (
+          mediaSrc ? (
             <button type="button" className="media-tile__preview" aria-label="Voir en grand" onClick={onPreview}>
-              <img src={media.viewUrl} alt={media.original_filename} />
+              <img src={mediaSrc} alt={sanitizeFilenameForDisplay(media.original_filename)} />
             </button>
           ) : (
             <div className="empty">Image</div>
           )
-        ) : media.viewUrl ? (
+        ) : mediaSrc ? (
           <button type="button" className="media-tile__preview" aria-label="Voir en grand" onClick={onPreview}>
-            <video src={media.viewUrl} muted preload="metadata" />
+            <video src={mediaSrc} muted preload="metadata" />
           </button>
         ) : (
           <div className="empty">Vidéo</div>
@@ -648,9 +680,14 @@ function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; us
 
   async function submitComment() {
     if (!text.trim() || submitting) return;
+    const parsed = parseCommentPayload(text);
+    if (!parsed.success) {
+      toast('⚠️ Commentaire invalide');
+      return;
+    }
     setSubmitting(true);
     try {
-      await api.post(`/api/comments/listings/${listingId}/comments`, { texte: text.trim() });
+      await api.post(`/api/comments/listings/${listingId}/comments`, parsed.data);
       setText('');
       void refetch();
     } catch (err) {
@@ -663,7 +700,7 @@ function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; us
 
   async function removeComment(commentId: string) {
     try {
-      await api.delete(`/api/comments/${commentId}`);
+      await sensitiveApi.delete(`/api/comments/${commentId}`, 'comment.delete', commentId);
       toast('Commentaire supprimé');
       void refetch();
     } catch (err) {
@@ -716,10 +753,12 @@ function CommentsSection({ listingId, userId, isAdmin }: { listingId: string; us
       )}
 
       <div className="listing-comments__composer">
-        <textarea
+        <SanitizedTextarea
           className="listing-comments__input"
+          kind="multiline"
+          maxLength={5000}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={setText}
           placeholder="Ajouter un commentaire…"
           aria-label="Nouveau commentaire"
           rows={3}

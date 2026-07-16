@@ -29,6 +29,7 @@ const requiredSnippets = {
   '0018_assign_demande_client_rpc.sql': ['assign_demande_client'],
   '0021_fix_protect_demande_fields.sql': ['protect_demande_fields', 'fast_rental.allow_demande_assign'],
   '0022_tighten_demande_assignment_guards.sql': ['protect_agent_role', 'fast_rental.allow_demande_assign'],
+  '0027_security_action_tokens.sql': ['security_action_tokens', 'enable row level security', 'revoke all'],
 };
 
 const requiredFiles = [
@@ -36,6 +37,7 @@ const requiredFiles = [
   '0018_assign_demande_client_rpc.sql',
   '0021_fix_protect_demande_fields.sql',
   '0022_tighten_demande_assignment_guards.sql',
+  '0027_security_action_tokens.sql',
 ];
 
 let failed = 0;

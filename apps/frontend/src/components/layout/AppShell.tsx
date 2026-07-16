@@ -2,6 +2,7 @@ import { Outlet, NavLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../app/providers/AuthProvider';
 import { api } from '../../lib/apiClient';
+import { useOnlineStatus } from '../../lib/onlineStatus';
 
 const tabs = [
   { to: 'search', label: 'Recherche' },
@@ -18,6 +19,7 @@ function tabClassName({ isActive }: { isActive: boolean }) {
 
 export function AppShell() {
   const { profile, isAdmin, signOut } = useAuth();
+  const isOnline = useOnlineStatus();
   const { data: leadsBadge } = useQuery({
     queryKey: ['leads-badge', profile?.id],
     queryFn: () => api.get<LeadsBadgeResponse>('/api/leads?includeArchived=false'),
@@ -62,6 +64,11 @@ export function AppShell() {
           </>
         )}
       </nav>
+      {!isOnline && (
+        <div className="offline-banner" role="status">
+          Connexion indisponible. Les actions sensibles sont bloquées jusqu’au retour en ligne.
+        </div>
+      )}
       <main style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         <Outlet />
       </main>

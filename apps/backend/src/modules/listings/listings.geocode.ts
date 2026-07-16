@@ -1,6 +1,7 @@
 import { env } from '../../config/env.js';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { logger } from '../../config/logger.js';
+import { fetchAllowlisted, geocodingAllowedOrigin } from '../../utils/outboundFetch.js';
 import { buildGeocodeQuery, normalizeGeocodeAddress } from './listings.geocode.helpers.js';
 
 export { buildGeocodeQuery, normalizeGeocodeAddress } from './listings.geocode.helpers.js';
@@ -35,7 +36,7 @@ async function fetchNominatimCoords(query: string) {
   url.searchParams.set('limit', '1');
   url.searchParams.set('countrycodes', 'ca');
 
-  const res = await fetch(url, {
+  const res = await fetchAllowlisted(url, geocodingAllowedOrigin(), {
     headers: {
       'User-Agent': env.GEOCODING_USER_AGENT,
       'Accept-Language': 'fr',

@@ -6,6 +6,19 @@ export const AGENT_ACTIVE_TRAITEMENT_STATUTS = ['assigné', 'contacté'] as cons
 /** Agent personal archive — customer outcome finalized. */
 export const AGENT_ARCHIVED_TRAITEMENT_STATUTS = ['réglé', 'refusé'] as const;
 export const USER_ROLES = ['admin', 'agent'] as const;
+export const SENSITIVE_ACTIONS = [
+  'user.update',
+  'user.deactivate',
+  'user.reactivate',
+  'user.delete',
+  'listing.delete',
+  'lead.delete',
+  'media.delete',
+  'comment.delete',
+  'sheets.import',
+  'sheets.sync',
+] as const;
+export type SensitiveAction = (typeof SENSITIVE_ACTIONS)[number];
 export const MEDIA_STATUSES = ['pending', 'approved', 'rejected'] as const;
 export const MEDIA_TYPES = ['image', 'video'] as const;
 export const LISTING_SOURCES = ['fast_rental', 'orcha', 'Fast Rental', 'Orcha', 'manual', 'sheet'] as const;
@@ -17,7 +30,20 @@ export const MAX_VIDEO_DURATION_SECONDS = 62;
 export const MAX_VIDEO_DURATION_DISPLAY_SECONDS = 60;
 export const MAX_IMAGE_SIZE_MB = 15;
 export const MAX_VIDEO_SIZE_MB = 250;
+/** Reject decompression bombs and oversized listing photos after upload inspection. */
+export const MAX_IMAGE_PIXEL_DIMENSION = 8192;
 export const MAX_MAP_LISTINGS = 5000;
+/** Hard cap on rows loaded for listing search/sort to prevent memory exhaustion. */
+export const MAX_LISTING_SEARCH_ROWS = 2500;
+/** Hard caps on unpaginated authenticated list endpoints. */
+export const MAX_USERS_LIST = 500;
+export const MAX_AGENT_CALLS = 500;
+export const MAX_RENTALS_LIST = 500;
+
+export const LISTING_SIZE_VALUES = ['2.5', '3.5', '4.5', '5.5', '6.5', '7.5'] as const;
+export const LISTING_FILTER_SOURCES = ['Fast Rental', 'Orcha', 'manual', 'fast_rental', 'orcha', 'sheet'] as const;
+
+export const PASSWORD_MIN_LENGTH = 10;
 
 export const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const VIDEO_MIME_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'] as const;
@@ -57,6 +83,30 @@ export function referralSlugFromEmail(email: string): string {
 export function referralUsernameFromNom(nom: string | null | undefined): string | null {
   const username = sanitizeReferralUsername(nom ?? '');
   return isValidReferralUsername(username) ? username : null;
+}
+
+/** Prefer nom; fall back to referral_slug only when it matches nom (not email-derived). */
+export function resolveAgentReferralUsername(profile: {
+  nom: string | null | undefined;
+  referral_slug?: string | null;
+}): string | null {
+  const fromNom = referralUsernameFromNom(profile.nom);
+  if (fromNom) return fromNom;
+
+  const slug = normalizeReferralUsername(profile.referral_slug ?? '');
+  const nomSlug = sanitizeReferralUsername(profile.nom ?? '');
+  if (isValidReferralUsername(slug) && nomSlug && slug === nomSlug) {
+    return slug;
+  }
+
+  return null;
+}
+
+export function parseTraitementStatut(value: string | null | undefined): (typeof TRAITEMENT_STATUTS)[number] {
+  if (value && (TRAITEMENT_STATUTS as readonly string[]).includes(value)) {
+    return value as (typeof TRAITEMENT_STATUTS)[number];
+  }
+  return 'assigné';
 }
 
 export const QUARTIER_COORDS: Record<string, [number, number]> = {

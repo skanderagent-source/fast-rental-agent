@@ -1,7 +1,13 @@
 import { Resend } from 'resend';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+import { redactedEmailRecipient } from '../../utils/logRedaction.js';
 import * as templates from './templates.js';
+import {
+  parseConfiguredReplyTo,
+  parseRecipientEmail,
+  sanitizeEmailSubject,
+} from './emailValidation.js';
 
 let resend: Resend | null = null;
 
@@ -15,8 +21,15 @@ function getResend() {
 export type EmailInput = { to: string; subject: string; html: string; text?: string };
 
 export async function sendEmail(input: EmailInput): Promise<void> {
+  const to = parseRecipientEmail(input.to);
+  const subject = sanitizeEmailSubject(input.subject);
+  if (!subject) {
+    logger.warn({ ...redactedEmailRecipient(to) }, 'Email skipped — empty subject after sanitization');
+    return;
+  }
+
   if (!env.EMAIL_ENABLED) {
-    logger.info({ to: input.to, subject: input.subject }, 'Email skipped (EMAIL_ENABLED=false)');
+    logger.info({ ...redactedEmailRecipient(to), subject }, 'Email skipped (EMAIL_ENABLED=false)');
     return;
   }
   const client = getResend();
@@ -24,17 +37,18 @@ export async function sendEmail(input: EmailInput): Promise<void> {
     logger.warn('Email not configured');
     return;
   }
+  const replyTo = parseConfiguredReplyTo(env.EMAIL_REPLY_TO);
   try {
     await client.emails.send({
       from: env.EMAIL_FROM,
-      to: input.to,
-      subject: input.subject,
+      to,
+      subject,
       html: input.html,
       text: input.text,
-      replyTo: env.EMAIL_REPLY_TO || undefined,
+      replyTo,
     });
   } catch (err) {
-    logger.error({ err, to: input.to, subject: input.subject }, 'Email send failed');
+    logger.error({ err, ...redactedEmailRecipient(to), subject }, 'Email send failed');
   }
 }
 

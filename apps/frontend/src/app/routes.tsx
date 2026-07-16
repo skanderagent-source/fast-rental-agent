@@ -8,13 +8,20 @@ import { PasswordRecoveryPage } from '../features/auth/PasswordRecoveryPage';
 import { SearchPanel } from '../features/agent/SearchPanel';
 import { DemandesPanel } from '../features/agent/DemandesPanel';
 import { UserDashboard } from '../features/dashboard/UserDashboard';
-import { AdminPanel } from '../features/admin/AdminPanel';
-import { AddListingPage, EditListingPage } from '../features/admin/AddListingPage';
 import { useAuth } from './providers/AuthProvider';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 
 const MapPanel = lazy(() =>
   import('../features/agent/MapPanel').then((module) => ({ default: module.MapPanel })),
+);
+const AdminPanel = lazy(() =>
+  import('../features/admin/AdminPanel').then((module) => ({ default: module.AdminPanel })),
+);
+const AddListingPage = lazy(() =>
+  import('../features/admin/AddListingPage').then((module) => ({ default: module.AddListingPage })),
+);
+const EditListingPage = lazy(() =>
+  import('../features/admin/AddListingPage').then((module) => ({ default: module.EditListingPage })),
 );
 
 function EntryRoute({ showLogin = false }: { showLogin?: boolean }) {
@@ -22,6 +29,16 @@ function EntryRoute({ showLogin = false }: { showLogin?: boolean }) {
   if (loading) return <LoadingSpinner label="Chargement de la session…" />;
   if (profile) return <Navigate to="/app/search" replace />;
   return showLogin ? <LoginPage /> : <Navigate to="/agent-login" replace />;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  return (
+    <ProtectedRoute role="admin">
+      <Suspense fallback={<LoadingSpinner label="Chargement de l’administration…" />}>
+        {children}
+      </Suspense>
+    </ProtectedRoute>
+  );
 }
 
 export function AppRoutes() {
@@ -51,9 +68,9 @@ export function AppRoutes() {
           }
         />
         <Route path="dashboard" element={<UserDashboard />} />
-        <Route path="admin" element={<ProtectedRoute role="admin"><AdminPanel /></ProtectedRoute>} />
-        <Route path="admin/listings/new" element={<ProtectedRoute role="admin"><AddListingPage /></ProtectedRoute>} />
-        <Route path="admin/listings/:id/edit" element={<ProtectedRoute role="admin"><EditListingPage /></ProtectedRoute>} />
+        <Route path="admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
+        <Route path="admin/listings/new" element={<AdminRoute><AddListingPage /></AdminRoute>} />
+        <Route path="admin/listings/:id/edit" element={<AdminRoute><EditListingPage /></AdminRoute>} />
       </Route>
       <Route path="*" element={<EntryRoute />} />
     </Routes>

@@ -77,3 +77,10 @@ See [docs/deployment.md](docs/deployment.md).
 ## Production checklist
 
 See [docs/operations.md](docs/operations.md).
+
+## Security
+
+- [docs/security-threat-model.md](docs/security-threat-model.md) — architecture, trust boundaries, residual risks
+- [docs/security-checklist.md](docs/security-checklist.md) — pre/post deploy verification
+- [docs/production-go-live-checklist.md](docs/production-go-live-checklist.md) — customer handoff sign-off
+- [docs/security-hardening-log.md](docs/security-hardening-log.md) — implemented controls log
