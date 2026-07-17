@@ -385,8 +385,10 @@ if (backendBuildTs.includes('"sourceMap": false')) ok('Backend production build 
 else fail('Backend production source map policy missing');
 
 const vercelJson = fs.readFileSync(path.join(root, 'vercel.json'), 'utf8');
-if (vercelJson.includes('\\.map') && vercelJson.includes('"status": 404')) {
-  ok('Vercel blocks public source map access');
+if (vercelJson.includes('"status":') && vercelJson.includes('"headers"')) {
+  fail('vercel.json must not use status inside headers (invalid Vercel schema)');
+} else if (viteConfig.includes('sourcemap: mode !== \'production\'')) {
+  ok('Production source maps omitted (Vercel headers schema disallows status on .map rules)');
 } else {
   fail('Vercel source map exposure control missing');
 }
