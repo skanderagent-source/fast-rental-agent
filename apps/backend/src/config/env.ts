@@ -113,6 +113,14 @@ const schema = z.object({
 
   if (data.NODE_ENV !== 'production') return;
 
+  if (data.HOST !== '127.0.0.1') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['HOST'],
+      message: 'Production HOST must be 127.0.0.1 so the API is only reachable via the local reverse proxy',
+    });
+  }
+
   if (data.EMAIL_ENABLED) {
     const from = z.string().email().safeParse(data.EMAIL_FROM);
     if (!from.success) {
