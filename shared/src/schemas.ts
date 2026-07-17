@@ -203,6 +203,22 @@ export const adminUserSchema = z.object({
   referral_slug: z.string().trim().min(1).max(REFERRAL_USERNAME_MAX_LENGTH),
 }).strict();
 
+export function toAdminUser(row: Record<string, unknown>) {
+  const picked = {
+    id: row.id,
+    nom: row.nom,
+    email: row.email,
+    role: row.role,
+    actif: row.actif,
+    referral_slug: row.referral_slug,
+  };
+  const parsed = adminUserSchema.safeParse(picked);
+  if (!parsed.success) {
+    throw new Error('Invalid admin user row');
+  }
+  return parsed.data;
+}
+
 export const listingDetailSchema = z.object({
   adresse: z.string().trim().min(1).max(500),
   quartier: z.string().trim().max(120).nullable().optional(),

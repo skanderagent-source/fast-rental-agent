@@ -85,21 +85,19 @@ export function referralUsernameFromNom(nom: string | null | undefined): string 
   return isValidReferralUsername(username) ? username : null;
 }
 
-/** Prefer nom; fall back to referral_slug only when it matches nom (not email-derived). */
+/** Join site origin + path without duplicate slashes when base URL ends with `/`. */
+export function joinPublicUrl(baseUrl: string, path: string): string {
+  const base = baseUrl.replace(/\/+$/, '');
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${suffix}`;
+}
+
+/** Referral links always use the username derived from agents.nom. */
 export function resolveAgentReferralUsername(profile: {
   nom: string | null | undefined;
   referral_slug?: string | null;
 }): string | null {
-  const fromNom = referralUsernameFromNom(profile.nom);
-  if (fromNom) return fromNom;
-
-  const slug = normalizeReferralUsername(profile.referral_slug ?? '');
-  const nomSlug = sanitizeReferralUsername(profile.nom ?? '');
-  if (isValidReferralUsername(slug) && nomSlug && slug === nomSlug) {
-    return slug;
-  }
-
-  return null;
+  return referralUsernameFromNom(profile.nom);
 }
 
 export function parseTraitementStatut(value: string | null | undefined): (typeof TRAITEMENT_STATUTS)[number] {

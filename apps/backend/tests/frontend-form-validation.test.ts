@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentProfileSchema, toAgentProfile, uuidParamSchema } from '@fast-rental/shared';
+import { agentProfileSchema, toAdminUser, toAgentProfile, uuidParamSchema } from '@fast-rental/shared';
 import {
   formatCurrency,
   parseListingCreatePayload,
@@ -82,6 +82,23 @@ describe('frontend form validation', () => {
     });
     expect(profile.referral_slug).toBe('agenttest');
     expect(profile).not.toHaveProperty('created_at');
+  });
+
+  it('maps database rows to the admin user list shape', () => {
+    const user = toAdminUser({
+      id: '00000000-0000-4000-8000-000000000001',
+      email: 'agent@example.com',
+      nom: 'Agent Test',
+      role: 'agent',
+      actif: true,
+      referral_slug: 'agenttest',
+      telephone: '5145550100',
+      must_change_password: false,
+      created_at: '2024-01-01T00:00:00.000Z',
+    });
+    expect(user.referral_slug).toBe('agenttest');
+    expect(user).not.toHaveProperty('created_at');
+    expect(user).not.toHaveProperty('telephone');
   });
 
   it('uses crypto.getRandomValues for client-generated ids', () => {

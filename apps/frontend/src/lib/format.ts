@@ -21,6 +21,31 @@ export function formatEventDate(iso: string) {
   return `${weekday} (${day})/${month}/${year} - ${time}`;
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Normalize sheet/free-text dates to YYYY-MM-DD for `<input type="date">`. */
+export function parseIsoDateInput(value: string | null | undefined): string {
+  if (!value?.trim()) return '';
+  const trimmed = value.trim();
+  if (ISO_DATE_RE.test(trimmed)) return trimmed;
+  const ms = Date.parse(trimmed);
+  if (Number.isNaN(ms)) return '';
+  const d = new Date(ms);
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+/** Human-readable French date for copied messages/ads (from calendar YYYY-MM-DD). */
+export function formatMessageDate(isoDate: string): string {
+  if (!ISO_DATE_RE.test(isoDate)) return isoDate.trim();
+  return new Date(`${isoDate}T12:00:00`).toLocaleDateString('fr-CA', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 const STATUS_LABELS: Record<string, string> = {
   Available: 'Dispo',
   'On Hold': 'Attente',

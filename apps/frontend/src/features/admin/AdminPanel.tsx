@@ -7,15 +7,16 @@ import {
   REFERRAL_USERNAME_MAX_LENGTH,
   REFERRAL_USERNAME_MIN_LENGTH,
   referralUsernameFromNom,
+  toAdminUser,
 } from '@fast-rental/shared';
 import { api, ApiError, sensitiveApi } from '../../lib/apiClient';
 import { formatZodIssues, parseCreateUserPayload } from '../../lib/formValidation';
-import { parseApi } from '../../lib/parseApi';
 import { useSubmitLock, OfflineError } from '../../lib/useSubmitLock';
 import { useToast } from '../../components/common/ToastProvider';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PasswordInput } from '../../components/common/PasswordInput';
 import { SanitizedInput } from '../../components/common/SanitizedField';
+import { useAuth } from '../../app/providers/AuthProvider';
 
 import type { AgentStats } from '@fast-rental/shared';
 import type { z } from 'zod';
@@ -26,6 +27,7 @@ const USERNAME_HINT = `Lettres et chiffres seulement (a-z, 0-9), ${REFERRAL_USER
 
 export function AdminPanel() {
   const toast = useToast();
+  const { profile } = useAuth();
   const queryClient = useQueryClient();
   const { data: stats, refetch: refetchStats } = useQuery({
     queryKey: ['admin-stats'],
@@ -39,8 +41,14 @@ export function AdminPanel() {
   const { data: users, refetch: refetchUsers } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
-      const rows = await api.get<unknown[]>('/api/users');
-      return rows.map((row) => parseApi(adminUserSchema, row, 'Utilisateur admin'));
+      const rows = await api.get<Record<string, unknown>[]>('/api/users');
+      return rows.map((row) => {
+        try {
+          return toAdminUser(row);
+        } catch {
+          throw new ApiError(502, 'INVALID_API_RESPONSE', 'Utilisateur admin invalide');
+        }
+      });
     },
   });
   const { data: activity } = useQuery({
@@ -65,6 +73,8 @@ export function AdminPanel() {
   const [confirmUsername, setConfirmUsername] = useState('');
   const [pendingUsername, setPendingUsername] = useState('');
   const { locked: creatingUser, run: runCreateUser } = useSubmitLock({ requireOnline: true });
+
+  const managedUsers = (users ?? []).filter((u) => u.id !== profile?.id);
 
   async function refreshUsers() {
     await Promise.all([refetchUsers(), refetchAgents()]);
@@ -263,7 +273,7 @@ export function AdminPanel() {
       <section className="profile-card">
         <h2 className="profile-card__title">Gestion des comptes</h2>
         <div className="profile-list">
-          {(users ?? []).map((u) => (
+          {managedUsers.map((u) => (
             <article key={u.id} className="profile-list-item profile-list-item--stacked admin-user-row">
               <div className="admin-user-row__main">
                 <div>

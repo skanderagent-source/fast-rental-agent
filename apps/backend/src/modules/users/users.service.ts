@@ -85,7 +85,21 @@ export async function createUser(input: {
 }
 
 export async function updateUser(id: string, input: { nom?: string; role?: 'admin' | 'agent'; actif?: boolean }) {
-  const { data, error } = await supabaseAdmin.from('agents').update(input).eq('id', id).select('*').single();
+  const updates: { nom?: string; role?: 'admin' | 'agent'; actif?: boolean; referral_slug?: string } = { ...input };
+
+  if (input.nom !== undefined) {
+    const referral_slug = referralUsernameFromNom(input.nom);
+    if (!referral_slug) {
+      throw Object.assign(
+        new Error('Le nom doit être un identifiant valide (a-z, 0-9, 3–32 caractères)'),
+        { status: 400, code: 'VALIDATION_ERROR' },
+      );
+    }
+    await assertReferralSlugAvailable(referral_slug, id);
+    updates.referral_slug = referral_slug;
+  }
+
+  const { data, error } = await supabaseAdmin.from('agents').update(updates).eq('id', id).select('*').single();
   if (error) throw error;
   return data;
 }

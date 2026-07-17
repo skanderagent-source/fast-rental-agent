@@ -1137,6 +1137,18 @@
   justify-content: flex-end;
 }
 
+.modal-panel .form-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.modal-panel .form-field + .form-field {
+  margin-top: 14px;
+}
+
 .offline-banner {
   background: #5c3d00;
   color: #fff7e8;

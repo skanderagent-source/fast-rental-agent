@@ -4,6 +4,7 @@ import type { Listing } from '@fast-rental/shared';
 import { Modal } from '../common/Modal';
 import { SanitizedInput, SanitizedTextarea } from '../common/SanitizedField';
 import { copyTextToClipboard } from '../../lib/clipboard';
+import { formatMessageDate, parseIsoDateInput } from '../../lib/format';
 import { sanitizeFieldInput } from '../../lib/inputSanitize';
 
 type Props = {
@@ -19,13 +20,23 @@ export function FacebookAdModal({ open, listing, onClose, onCopied }: Props) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (listing) setExtras(sanitizeFieldInput(listing.notes ?? '', 'multiline', 10000));
-  }, [listing]);
+    if (!open) {
+      setDispo('');
+      setExtras('');
+      setError('');
+      return;
+    }
+    if (listing) {
+      setExtras(sanitizeFieldInput(listing.notes ?? '', 'multiline', 10000));
+      setDispo(parseIsoDateInput(listing.date_disponibilite));
+    }
+  }, [open, listing]);
 
   async function submit() {
     if (!listing) return;
     setError('');
-    const msg = buildFacebookAd(listing, dispo, extras);
+    const dispoLabel = dispo.trim() ? formatMessageDate(dispo) : '';
+    const msg = buildFacebookAd(listing, dispoLabel, extras);
     try {
       await copyTextToClipboard(msg);
       onCopied();
@@ -45,9 +56,9 @@ export function FacebookAdModal({ open, listing, onClose, onCopied }: Props) {
       {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>{error}</div>}
       <div className="form-field">
         <label htmlFor="fb-dispo">Date de disponibilité</label>
-        <SanitizedInput id="fb-dispo" kind="dateText" maxLength={20} value={dispo} onChange={setDispo} />
+        <SanitizedInput id="fb-dispo" kind="dateIso" maxLength={10} value={dispo} onChange={setDispo} />
       </div>
-      <div className="form-field" style={{ marginTop: 10 }}>
+      <div className="form-field">
         <label htmlFor="fb-extras">Extras (optionnel)</label>
         <SanitizedTextarea id="fb-extras" kind="multiline" maxLength={10000} value={extras} onChange={setExtras} rows={4} />
       </div>

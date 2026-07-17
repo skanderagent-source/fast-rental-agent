@@ -1,5 +1,5 @@
+import { AGENT_PROFILE_SELECT, referralUsernameFromNom, toAgentProfile } from '@fast-rental/shared';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
-import { AGENT_PROFILE_SELECT, toAgentProfile } from '@fast-rental/shared';
 import { forbidden } from '../../utils/httpErrors.js';
 import { logActivity, shouldLogLogin } from '../activity/activity.service.js';
 
@@ -52,7 +52,26 @@ export async function updateProfile(
     if (!media) throw forbidden('Photo de profil invalide');
   }
   const updates: Record<string, unknown> = {};
-  if (input.nom !== undefined) updates.nom = input.nom;
+  if (input.nom !== undefined) {
+    const referral_slug = referralUsernameFromNom(input.nom);
+    if (!referral_slug) {
+      throw Object.assign(
+        new Error('Le nom doit être un identifiant valide (a-z, 0-9, 3–32 caractères)'),
+        { status: 400, code: 'VALIDATION_ERROR' },
+      );
+    }
+    const { data: slugConflict } = await supabaseAdmin
+      .from('agents')
+      .select('id')
+      .eq('referral_slug', referral_slug)
+      .neq('id', userId)
+      .maybeSingle();
+    if (slugConflict) {
+      throw Object.assign(new Error('Ce nom d\'utilisateur est déjà pris'), { status: 409, code: 'CONFLICT' });
+    }
+    updates.nom = input.nom;
+    updates.referral_slug = referral_slug;
+  }
   if (input.telephone !== undefined) updates.telephone = input.telephone;
   if (input.profilePhotoMediaId !== undefined) updates.profile_photo_media_id = input.profilePhotoMediaId;
   const { data, error } = await supabaseAdmin
