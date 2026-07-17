@@ -7,6 +7,7 @@ import {
   buildColumnIndex,
   dedupeParsedSheetRows,
   getColumnValue,
+  isActiveSheetListing,
   mapFastRentalRow,
   mapOrchaRow,
   normalizeHeader,
@@ -39,6 +40,7 @@ export type SheetReadStats = {
   headerRow: number;
   rowsSeen: number;
   rowsValid: number;
+  rowsActive: number;
 };
 
 export async function readSheetRows(sourceKey: SheetSourceKey): Promise<{ rows: ParsedSheetRow[]; stats: SheetReadStats }> {
@@ -67,6 +69,7 @@ export async function readSheetRows(sourceKey: SheetSourceKey): Promise<{ rows: 
         headerRow: config.headerRow,
         rowsSeen: 0,
         rowsValid: 0,
+        rowsActive: 0,
       },
     };
   }
@@ -86,14 +89,17 @@ export async function readSheetRows(sourceKey: SheetSourceKey): Promise<{ rows: 
     if (parsed) rows.push(parsed);
   }
 
+  const activeRows = rows.filter(isActiveSheetListing);
+
   return {
-    rows,
+    rows: activeRows,
     stats: {
       source: config.source,
       tabName: config.tabName,
       headerRow: headerRowIndex + 1,
       rowsSeen,
       rowsValid: rows.length,
+      rowsActive: activeRows.length,
     },
   };
 }

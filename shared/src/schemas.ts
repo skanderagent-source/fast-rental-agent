@@ -231,7 +231,7 @@ export const listingDetailSchema = z.object({
   notes: z.string().max(10000).nullable().optional(),
   latitude: z.coerce.number().min(-90).max(90).nullable().optional(),
   longitude: z.coerce.number().min(-180).max(180).nullable().optional(),
-  geocoding_status: z.enum(['pending', 'success', 'failed', 'manual']).nullable().optional(),
+  geocoding_status: z.enum(['pending', 'success', 'failed', 'manual', 'approximate']).nullable().optional(),
   geocoding_error: z.string().max(500).nullable().optional(),
 }).strict();
 

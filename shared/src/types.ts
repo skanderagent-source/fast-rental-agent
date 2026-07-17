@@ -48,7 +48,7 @@ export type Listing = {
   manual_overrides: Record<string, boolean>;
   sheet_updated_at: string | null;
   geocoded_at: string | null;
-  geocoding_status: 'pending' | 'success' | 'failed' | 'manual' | null;
+  geocoding_status: 'pending' | 'success' | 'failed' | 'manual' | 'approximate' | null;
   geocoding_error: string | null;
   locataire_nom: string | null;
   locataire_tel: string | null;
@@ -65,7 +65,7 @@ export type Listing = {
 
 export type MapListing = Pick<
   Listing,
-  'id' | 'adresse' | 'quartier' | 'prix' | 'statut' | 'latitude' | 'longitude'
+  'id' | 'adresse' | 'quartier' | 'prix' | 'statut' | 'latitude' | 'longitude' | 'geocoding_status'
 >;
 
 export type MapListingsResponse = {

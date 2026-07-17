@@ -197,7 +197,7 @@ export async function listListings(query: {
 }
 
 export async function listMapListings() {
-  const mapFields = 'id,adresse,quartier,prix,statut,latitude,longitude';
+  const mapFields = 'id,adresse,quartier,prix,statut,latitude,longitude,geocoding_status';
   const firstTo = Math.min(MAP_QUERY_PAGE_SIZE, MAX_MAP_LISTINGS) - 1;
   const {
     data: firstPage,

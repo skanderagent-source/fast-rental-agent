@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
 import { useMatch } from 'react-router-dom';
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip } from 'react-leaflet';
 import { useQuery } from '@tanstack/react-query';
 import {
   MAX_MAP_LISTINGS,
-  QUARTIER_COORDS,
+  areaCoordsKey,
+  resolveAreaCoords,
   type MapListing,
   type MapListingsResponse,
 } from '@fast-rental/shared';
@@ -25,27 +26,63 @@ type MapMarker = {
   approximate: boolean;
 };
 
-function normalizeQuartier(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+function markerFillColor(listings: MapListing[]) {
+  const statuses = new Set(listings.map((listing) => listing.statut));
+  if (statuses.size === 1) {
+    return colors[listings[0]!.statut] ?? '#6e6e73';
+  }
+  return '#0a84ff';
 }
 
-const normalizedQuartierCoords = Object.entries(QUARTIER_COORDS).map(([quartier, coords]) => ({
-  quartier: normalizeQuartier(quartier),
-  coords,
-}));
+function markerGroup(listing: MapListing): { key: string; coords: [number, number]; approximate: boolean } | null {
+  if (listing.latitude != null && listing.longitude != null) {
+    if (listing.geocoding_status === 'approximate') {
+      const areaKey = areaCoordsKey(listing.quartier);
+      const areaCoords = resolveAreaCoords(listing.quartier);
+      if (areaKey && areaCoords) {
+        return { key: `area:${areaKey}`, coords: areaCoords, approximate: true };
+      }
+    }
 
-function lookupQuartierCoords(quartier: string | null) {
-  const normalized = normalizeQuartier(quartier ?? '');
-  if (!normalized) return null;
+    return {
+      key: `exact:${listing.latitude.toFixed(6)}:${listing.longitude.toFixed(6)}`,
+      coords: [listing.latitude, listing.longitude],
+      approximate: false,
+    };
+  }
 
-  const exact = normalizedQuartierCoords.find((entry) => entry.quartier === normalized);
-  return exact?.coords ?? null;
+  const coords = resolveAreaCoords(listing.quartier);
+  const key = areaCoordsKey(listing.quartier);
+  if (!coords || !key) return null;
+
+  return { key: `area:${key}`, coords, approximate: true };
+}
+
+function buildMapMarkers(listings: MapListing[]) {
+  const markers = new Map<string, MapMarker>();
+  let unlocated = 0;
+
+  for (const listing of listings) {
+    const group = markerGroup(listing);
+    if (!group) {
+      unlocated++;
+      continue;
+    }
+
+    const existing = markers.get(group.key);
+    if (existing) {
+      existing.listings.push(listing);
+      continue;
+    }
+
+    markers.set(group.key, {
+      listings: [listing],
+      coords: group.coords,
+      approximate: group.approximate,
+    });
+  }
+
+  return { markers: [...markers.values()], unlocatedCount: unlocated };
 }
 
 export function MapPanel() {
@@ -58,50 +95,10 @@ export function MapPanel() {
     gcTime: 30 * 60_000,
   });
 
-  const { markers, unlocatedCount } = useMemo(() => {
-    const exactMarkers = new Map<string, MapMarker>();
-    const approximateMarkers = new Map<string, MapMarker>();
-    let unlocated = 0;
-
-    for (const listing of data?.items ?? []) {
-      if (listing.latitude != null && listing.longitude != null) {
-        const key = `${listing.latitude}:${listing.longitude}`;
-        const existing = exactMarkers.get(key);
-        if (existing) {
-          existing.listings.push(listing);
-        } else {
-          exactMarkers.set(key, {
-            listings: [listing],
-            coords: [listing.latitude, listing.longitude],
-            approximate: false,
-          });
-        }
-        continue;
-      }
-
-      const fallback = lookupQuartierCoords(listing.quartier);
-      if (fallback) {
-        const key = `${fallback[0]}:${fallback[1]}`;
-        const existing = approximateMarkers.get(key);
-        if (existing) {
-          existing.listings.push(listing);
-        } else {
-          approximateMarkers.set(key, {
-            listings: [listing],
-            coords: fallback,
-            approximate: true,
-          });
-        }
-      } else {
-        unlocated++;
-      }
-    }
-
-    return {
-      markers: [...exactMarkers.values(), ...approximateMarkers.values()],
-      unlocatedCount: unlocated,
-    };
-  }, [data?.items]);
+  const { markers, unlocatedCount } = useMemo(
+    () => buildMapMarkers(data?.items ?? []),
+    [data?.items],
+  );
 
   return (
     <div className="panel-scroll map-panel">
@@ -127,30 +124,51 @@ export function MapPanel() {
                 updateWhenIdle
               />
               {markers.map(({ listings, coords, approximate }) => {
-                const statuses = new Set(listings.map((listing) => listing.statut));
                 const first = listings[0]!;
+                const fillColor = markerFillColor(listings);
+                const count = listings.length;
                 return (
                   <CircleMarker
-                    key={first.id}
+                    key={`${first.id}:${coords[0]}:${coords[1]}`}
                     center={coords}
-                    radius={Math.min(11, 7 + Math.log2(listings.length))}
+                    radius={Math.min(16, 10 + Math.log2(Math.max(count, 1)))}
                     pathOptions={{
                       color: '#fff',
                       weight: 2,
-                      fillColor: statuses.size === 1
-                        ? (colors[first.statut] ?? '#6e6e73')
-                        : '#0a84ff',
-                      fillOpacity: approximate ? 0.45 : 0.9,
+                      fillColor,
+                      fillOpacity: approximate ? 0.55 : 0.9,
                     }}
                   >
+                    {count > 1 && (
+                      <Tooltip
+                        permanent
+                        direction="center"
+                        offset={[0, 0]}
+                        className="map-marker-count"
+                      >
+                        {count}
+                      </Tooltip>
+                    )}
                     <Popup>
-                      {listings.length > 1 && (
-                        <><b>{listings.length} logements à cette position</b><hr /></>
+                      {count > 1 && (
+                        <>
+                          <b>{count} logements {approximate ? 'dans ce secteur' : 'à cette position'}</b>
+                          <hr />
+                        </>
                       )}
                       {listings.map((listing) => (
                         <div key={listing.id}>
                           <b>{esc(listing.adresse)}</b><br />
-                          {approximate && <><small>Position approximative</small><br /></>}
+                          {approximate && listing.quartier && (
+                            <>
+                              <small>Secteur : {esc(listing.quartier)}</small><br />
+                            </>
+                          )}
+                          {approximate && (
+                            <>
+                              <small>Position approximative (secteur)</small><br />
+                            </>
+                          )}
                           {formatPrice(listing.prix)}
                         </div>
                       ))}
@@ -179,7 +197,7 @@ export function MapPanel() {
         <Legend color="#6e6e73" label="Rénovation" />
         <Legend color="#bf5af2" label="Loué" />
         <Legend color="#0a84ff" label="Plusieurs statuts" />
-        <Legend color="#6e6e73" label="Position approximative" opacity={0.45} />
+        <Legend color="#6e6e73" label="Position approximative (secteur)" opacity={0.55} />
       </div>
     </div>
   );

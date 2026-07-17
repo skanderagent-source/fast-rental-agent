@@ -4,13 +4,14 @@ import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { logActivity } from '../activity/activity.service.js';
 import { geocodeAllPendingListings } from '../listings/listings.geocode.js';
 import type { ParsedSheetRow } from './sheetMappings.js';
+import { SHEET_ROW_ID_PREFIXES } from './sheetMappings.js';
 import { collectAllSheetRows } from './sheets.reader.js';
 import { buildChangedSheetUpdates, hasAddressFieldChange } from './sheets.compare.js';
 
 const BATCH_SIZE = 100;
 
 type UpsertResult = {
-  action: 'inserted' | 'updated' | 'skipped';
+  action: 'inserted' | 'updated' | 'skipped' | 'restored';
   id: string;
   addressChanged?: boolean;
 };
@@ -64,6 +65,33 @@ async function loadExistingListings(rows: ParsedSheetRow[]) {
   return bySheetRowId;
 }
 
+async function reconcileStaleSheetListings(activeSheetRowIds: Set<string>) {
+  let rowsRemoved = 0;
+
+  for (const prefix of SHEET_ROW_ID_PREFIXES) {
+    const { data, error } = await supabaseAdmin
+      .from('logements')
+      .select('id, sheet_row_id')
+      .is('deleted_at', null)
+      .like('sheet_row_id', `${prefix}%`);
+    if (error) throw error;
+
+    for (const listing of data ?? []) {
+      const sheetRowId = String(listing.sheet_row_id ?? '');
+      if (activeSheetRowIds.has(sheetRowId)) continue;
+
+      const { error: deleteError } = await supabaseAdmin
+        .from('logements')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', listing.id);
+      if (deleteError) throw deleteError;
+      rowsRemoved++;
+    }
+  }
+
+  return rowsRemoved;
+}
+
 export async function previewSheetImport() {
   const { rows, stats } = await collectAllSheetRows();
   return {
@@ -87,21 +115,28 @@ async function upsertRow(
       : {};
 
     const updates = buildChangedSheetUpdates(existing, payload, overrides);
-    if (!updates) {
+    const needsRestore = Boolean(existing.deleted_at);
+    if (!updates && !needsRestore) {
       return { action: 'skipped', id: String(existing.id) };
     }
 
+    const patch = {
+      ...(updates ?? {}),
+      ...(needsRestore ? { deleted_at: null } : {}),
+      ...(!updates && needsRestore ? { sheet_updated_at: new Date().toISOString() } : {}),
+    };
+
     const { data, error } = await supabaseAdmin
       .from('logements')
-      .update(updates)
+      .update(patch)
       .eq('id', existing.id)
       .select('id')
       .single();
     if (error) throw error;
     return {
-      action: 'updated',
+      action: needsRestore && !updates ? 'restored' : 'updated',
       id: String(data.id),
-      addressChanged: hasAddressFieldChange(updates),
+      addressChanged: updates ? hasAddressFieldChange(updates) : false,
     };
   }
 
@@ -136,6 +171,7 @@ async function runSheetJob(
   let rowsUpdated = 0;
   let rowsSkipped = 0;
   let rowsErrored = 0;
+  let rowsRemoved = 0;
   let needsGeocode = false;
 
   await logActivity({
@@ -148,6 +184,7 @@ async function runSheetJob(
   try {
     const { rows, stats } = await collectAllSheetRows();
     rowsSeen = rows.length;
+    const activeSheetRowIds = new Set(rows.map((row) => row.sheet_row_id));
     const existingBySheetRowId = await loadExistingListings(rows);
 
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
@@ -165,6 +202,8 @@ async function runSheetJob(
           } else if (result.action === 'updated') {
             rowsUpdated++;
             if (result.addressChanged) needsGeocode = true;
+          } else if (result.action === 'restored') {
+            rowsUpdated++;
           } else {
             rowsSkipped++;
           }
@@ -174,6 +213,8 @@ async function runSheetJob(
       }
       await new Promise((r) => setTimeout(r, 100));
     }
+
+    rowsRemoved = await reconcileStaleSheetListings(activeSheetRowIds);
 
     await supabaseAdmin.from('sheet_sync_runs').update({
       status: rowsErrored ? 'partial' : 'success',
@@ -189,7 +230,7 @@ async function runSheetJob(
       agentId: '00000000-0000-0000-0000-000000000000',
       agentNom: 'System',
       typeAction: activityDone,
-      details: `${rowsInserted} insérés, ${rowsUpdated} mis à jour, ${rowsSkipped} inchangés, ${rowsErrored} erreurs`,
+      details: `${rowsInserted} insérés, ${rowsUpdated} mis à jour, ${rowsSkipped} inchangés, ${rowsRemoved} retirés, ${rowsErrored} erreurs`,
     });
 
     if (needsGeocode) {
@@ -205,6 +246,7 @@ async function runSheetJob(
       rowsInserted,
       rowsUpdated,
       rowsSkipped,
+      rowsRemoved,
       rowsErrored,
       summary: summarizeRows(rows),
     };

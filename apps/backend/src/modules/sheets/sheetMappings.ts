@@ -116,7 +116,7 @@ export function parsePrice(value: string | number | null | undefined) {
 
 export function mapSheetStatut(value: string | null | undefined) {
   const s = String(value ?? '').trim().toLowerCase();
-  if (!s) return 'Available';
+  if (!s) return 'Not Available';
   if (s.includes('rent') || s.includes('lou')) return 'Rented';
   if (s.includes('reno') || s.includes('rénov')) return 'In Reno';
   if (s.includes('not ') || s.includes('unavail') || s.includes('pas dispo')) return 'Not Available';
@@ -125,8 +125,17 @@ export function mapSheetStatut(value: string | null | undefined) {
     || s.includes('lease') || s.includes('soon') || s.includes('tal')
   ) return 'On Hold';
   if (s.includes('avail') || s.includes('dispo')) return 'Available';
-  return 'Available';
+  return 'Not Available';
 }
+
+/** Sheet rows that should stay in agent/public inventory after sync. */
+export function isActiveSheetListing(row: ParsedSheetRow) {
+  // Orcha tab only contains currently available units.
+  if (row.source === 'Orcha') return true;
+  return row.statut === 'Available';
+}
+
+export const SHEET_ROW_ID_PREFIXES = ['fast_rental|', 'orcha|'] as const;
 
 /** @deprecated use mapSheetStatut */
 export function normalizeStatut(value: string | null | undefined) {
@@ -204,7 +213,7 @@ export function mapFastRentalRow(
     code_entree: textValue(get('entrance code')) || null,
     concierge_tel: textValue(get('janitor number')) || null,
     notes: textValue(get('notes')) || null,
-    statut: mapSheetStatut(get('availability')),
+    statut: mapSheetStatut(textValue(get('availability')) || null),
     date_disponibilite: textValue(get('available on')) || null,
     locataire_nom: null,
     locataire_tel: null,
@@ -231,7 +240,7 @@ export function mapOrchaRow(
     code_entree: textValue(get('entrance code')) || null,
     concierge_tel: textValue(get('janitor number')) || null,
     notes: textValue(get('notes')) || null,
-    statut: mapSheetStatut(get('status')),
+    statut: textValue(get('status')) ? mapSheetStatut(get('status')) : 'Available',
     date_disponibilite: textValue(get('available')) || null,
     locataire_nom: textValue(get("tenant's name")) || null,
     locataire_tel: textValue(get("tenant's number")) || null,

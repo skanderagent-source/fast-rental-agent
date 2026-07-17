@@ -216,6 +216,21 @@
   color: var(--text2);
 }
 #map-container { flex: 1; min-height: 300px; border-radius: var(--radius); overflow: hidden; }
+.map-marker-count.leaflet-tooltip {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+.map-marker-count.leaflet-tooltip::before { display: none; }
 
 /* ── Login page ─────────────────────────────────────────────────────────── */
 .login-page {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSheetRowId,
   dedupeParsedSheetRows,
+  isActiveSheetListing,
   mapFastRentalRow,
   mapOrchaRow,
   mapSheetStatut,
@@ -60,6 +61,27 @@ describe('sheet mappings', () => {
     expect(mapSheetStatut('On hold')).toBe('On Hold');
     expect(mapSheetStatut('Loué')).toBe('Rented');
     expect(mapSheetStatut('In reno')).toBe('In Reno');
+    expect(mapSheetStatut('')).toBe('Not Available');
+    expect(mapSheetStatut('unknown label')).toBe('Not Available');
+  });
+
+  it('treats only Available Fast Rental rows as active inventory', () => {
+    const available = mapFastRentalRow(
+      (name) => ({ address: '123 Rue Test', availability: 'Available' }[name] ?? ''),
+      'Fast Rental',
+    )!;
+    const onHold = mapFastRentalRow(
+      (name) => ({ address: '456 Rue Test', availability: 'On Hold' }[name] ?? ''),
+      'Fast Rental',
+    )!;
+    const orcha = mapOrchaRow(
+      (name) => ({ 'eft form': '789 Orcha Ave' }[name] ?? ''),
+      'Orcha',
+    )!;
+
+    expect(isActiveSheetListing(available)).toBe(true);
+    expect(isActiveSheetListing(onHold)).toBe(false);
+    expect(isActiveSheetListing(orcha)).toBe(true);
   });
 
   it('detects known cities in area', () => {

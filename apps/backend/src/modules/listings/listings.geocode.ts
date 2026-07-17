@@ -1,10 +1,15 @@
+import { resolveAreaCoords } from '@fast-rental/shared';
 import { env } from '../../config/env.js';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { logger } from '../../config/logger.js';
 import { fetchAllowlisted, geocodingAllowedOrigin } from '../../utils/outboundFetch.js';
-import { buildGeocodeQuery, normalizeGeocodeAddress } from './listings.geocode.helpers.js';
+import {
+  buildAreaGeocodeQuery,
+  buildGeocodeQuery,
+  normalizeGeocodeAddress,
+} from './listings.geocode.helpers.js';
 
-export { buildGeocodeQuery, normalizeGeocodeAddress } from './listings.geocode.helpers.js';
+export { buildAreaGeocodeQuery, buildGeocodeQuery, normalizeGeocodeAddress } from './listings.geocode.helpers.js';
 
 const MIN_DELAY_MS = 1100;
 
@@ -63,6 +68,7 @@ async function applyGeocodeResult(
   lat: number,
   lon: number,
   raw: Record<string, unknown>,
+  status: 'success' | 'approximate',
 ) {
   await supabaseAdmin.from('geocode_cache').upsert({
     normalized_address: normalized,
@@ -76,15 +82,76 @@ async function applyGeocodeResult(
     latitude: lat,
     longitude: lon,
     geocoded_at: new Date().toISOString(),
-    geocoding_status: 'success',
+    geocoding_status: status,
     geocoding_error: null,
   }).eq('id', listingId);
+}
+
+async function applyCachedGeocode(
+  listingId: string,
+  lat: number,
+  lon: number,
+  status: 'success' | 'approximate',
+) {
+  await supabaseAdmin.from('logements').update({
+    latitude: lat,
+    longitude: lon,
+    geocoded_at: new Date().toISOString(),
+    geocoding_status: status,
+    geocoding_error: null,
+  }).eq('id', listingId);
+}
+
+async function geocodeFromCache(normalized: string, listingId: string, status: 'success' | 'approximate') {
+  const { data: cached } = await supabaseAdmin
+    .from('geocode_cache')
+    .select('*')
+    .eq('normalized_address', normalized)
+    .maybeSingle();
+
+  if (!cached) return false;
+
+  await applyCachedGeocode(listingId, cached.latitude, cached.longitude, status);
+  return true;
+}
+
+async function geocodeWithQuery(
+  listingId: string,
+  query: string,
+  status: 'success' | 'approximate',
+) {
+  const normalized = normalizeGeocodeAddress(query);
+  if (await geocodeFromCache(normalized, listingId, status)) {
+    return status === 'approximate' ? 'approximate' : 'cached';
+  }
+
+  const result = await fetchNominatimCoords(query);
+  await applyGeocodeResult(listingId, normalized, result.lat, result.lon, result.raw, status);
+  return status === 'approximate' ? 'approximate' : 'success';
+}
+
+async function geocodeFromAreaLookup(
+  listing: { id: string; quartier: string | null },
+) {
+  const coords = resolveAreaCoords(listing.quartier);
+  if (!coords) return false;
+
+  const normalized = normalizeGeocodeAddress(`area:${listing.quartier ?? ''}`);
+  await applyGeocodeResult(
+    listing.id,
+    normalized,
+    coords[0],
+    coords[1],
+    { source: 'area_lookup', area: listing.quartier },
+    'approximate',
+  );
+  return true;
 }
 
 export async function geocodeListing(
   listingId: string,
   force = false,
-): Promise<'success' | 'cached' | 'skipped' | 'failed'> {
+): Promise<'success' | 'cached' | 'approximate' | 'skipped' | 'failed'> {
   const { data: listing, error } = await supabaseAdmin
     .from('logements')
     .select('id, adresse, quartier, ville, latitude, longitude, geocoding_status')
@@ -94,38 +161,38 @@ export async function geocodeListing(
   if (error || !listing) return 'skipped';
   if (
     !force
-    &&
-    listing.geocoding_status !== 'pending'
+    && listing.geocoding_status !== 'pending'
+    && listing.geocoding_status !== 'failed'
     && listing.latitude != null
     && listing.longitude != null
   ) return 'skipped';
 
-  const query = buildGeocodeQuery(listing);
-  const normalized = normalizeGeocodeAddress(query);
+  const addressQuery = buildGeocodeQuery(listing);
+  const addressNormalized = normalizeGeocodeAddress(addressQuery);
 
-  const { data: cached } = await supabaseAdmin
-    .from('geocode_cache')
-    .select('*')
-    .eq('normalized_address', normalized)
-    .maybeSingle();
-
-  if (cached) {
-    await supabaseAdmin.from('logements').update({
-      latitude: cached.latitude,
-      longitude: cached.longitude,
-      geocoded_at: new Date().toISOString(),
-      geocoding_status: 'success',
-      geocoding_error: null,
-    }).eq('id', listingId);
+  if (await geocodeFromCache(addressNormalized, listingId, 'success')) {
     return 'cached';
   }
 
   try {
-    const result = await fetchNominatimCoords(query);
-    await applyGeocodeResult(listingId, normalized, result.lat, result.lon, result.raw);
+    const result = await fetchNominatimCoords(addressQuery);
+    await applyGeocodeResult(listingId, addressNormalized, result.lat, result.lon, result.raw, 'success');
     return 'success';
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Geocoding failed';
+  } catch (addressError) {
+    const areaQuery = buildAreaGeocodeQuery(listing);
+    if (areaQuery) {
+      try {
+        return await geocodeWithQuery(listingId, areaQuery, 'approximate');
+      } catch {
+        // Fall through to static area lookup.
+      }
+    }
+
+    if (await geocodeFromAreaLookup(listing)) {
+      return 'approximate';
+    }
+
+    const message = addressError instanceof Error ? addressError.message : 'Geocoding failed';
     await supabaseAdmin.from('logements').update({
       geocoding_status: 'failed',
       geocoding_error: message,
@@ -138,6 +205,7 @@ export type GeocodeBatchResult = {
   total: number;
   success: number;
   cached: number;
+  approximate: number;
   failed: number;
   skipped: number;
   estimatedMinutes: number;
@@ -162,6 +230,7 @@ export async function geocodeAllPendingListings(retryFailed = false): Promise<Ge
     total: listings.length,
     success: 0,
     cached: 0,
+    approximate: 0,
     failed: 0,
     skipped: 0,
     estimatedMinutes: Math.ceil((listings.length * MIN_DELAY_MS) / 60_000),
@@ -177,6 +246,7 @@ export async function geocodeAllPendingListings(retryFailed = false): Promise<Ge
     const status = await geocodeListing(listing.id, retryFailed);
     if (status === 'success') result.success++;
     else if (status === 'cached') result.cached++;
+    else if (status === 'approximate') result.approximate++;
     else if (status === 'failed') result.failed++;
     else result.skipped++;
 

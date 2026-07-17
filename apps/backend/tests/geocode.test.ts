@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildGeocodeQuery, normalizeGeocodeAddress } from '../src/modules/listings/listings.geocode.helpers.js';
+import {
+  buildAreaGeocodeQuery,
+  buildGeocodeQuery,
+  normalizeGeocodeAddress,
+  sanitizeGeocodePart,
+} from '../src/modules/listings/listings.geocode.helpers.js';
 
 describe('geocoding helpers', () => {
   it('buildGeocodeQuery includes adresse, quartier, ville and Québec', () => {
@@ -16,6 +21,23 @@ describe('geocoding helpers', () => {
       quartier: null,
       ville: null,
     })).toBe('123 Rue Test, Montréal, Québec, Canada');
+  });
+
+  it('sanitizes trailing commas from sheet values', () => {
+    expect(sanitizeGeocodePart('587 Rue Saint-Georges, ')).toBe('587 Rue Saint-Georges');
+    expect(buildGeocodeQuery({
+      adresse: '587 Rue Saint-Georges, ',
+      quartier: 'South Shore',
+      ville: 'Montréal',
+    })).toBe('587 Rue Saint-Georges, South Shore, Montréal, Québec, Canada');
+  });
+
+  it('buildAreaGeocodeQuery uses the area column as fallback', () => {
+    expect(buildAreaGeocodeQuery({
+      quartier: 'Hochelaga Maisonneuve',
+      ville: 'Montréal',
+    })).toBe('Hochelaga Maisonneuve, Montréal, Québec, Canada');
+    expect(buildAreaGeocodeQuery({ quartier: null, ville: 'Montréal' })).toBeNull();
   });
 
   it('normalizeGeocodeAddress strips accents and lowercases', () => {
