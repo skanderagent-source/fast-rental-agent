@@ -286,11 +286,23 @@
   margin-bottom: 28px;
 }
 
+.login-card__logo-wrap {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .login-card__logo {
   display: block;
-  margin: 0 auto 16px;
-  border-radius: 14px;
-  object-fit: cover;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
 }
 
 .login-card__title {
@@ -1295,6 +1307,7 @@
   text-decoration: none;
   color: var(--text3);
   border-bottom: 2px solid transparent;
+  text-align: center;
 }
 
 .app-tab--active {
@@ -1302,9 +1315,10 @@
 }
 
 .app-tab__label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  text-align: center;
   padding-bottom: 2px;
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
@@ -1315,12 +1329,18 @@
 }
 
 .app-tab__badge {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 4px;
   background: var(--red);
   color: #fff;
   border-radius: 10px;
   padding: 1px 6px;
   font-size: 10px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 /* ── Demandes page ──────────────────────────────────────────────────────── */
@@ -2178,4 +2198,93 @@
 
 .listing-comments__send:not(:disabled):hover {
   opacity: 0.92;
+}
+
+/* ── Home-screen installation prompt ───────────────────────────────────── */
+.install-prompt {
+  position: fixed;
+  z-index: 4000;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(calc(100% - 24px), 560px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  color: var(--text);
+  background: rgba(28, 28, 30, 0.97);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(18px);
+}
+
+.install-prompt__icon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 11px;
+}
+
+.install-prompt__content {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text2);
+}
+
+.install-prompt__content strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.install-prompt__ios-instruction svg {
+  margin: 0 2px -3px;
+  color: var(--blue);
+}
+
+.install-prompt__action {
+  flex: 0 0 auto;
+  padding: 9px 13px;
+  border: none;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.install-prompt__close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg3);
+  color: var(--text2);
+  cursor: pointer;
+}
+
+@media (max-width: 520px) {
+  .install-prompt {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .install-prompt__content {
+    flex-basis: calc(100% - 102px);
+  }
+
+  .install-prompt__action {
+    margin-left: 60px;
+  }
 }

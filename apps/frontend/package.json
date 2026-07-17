@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "sync-logos": "node ../../scripts/sync-logos.mjs",
+    "predev": "npm run sync-logos",
+    "prebuild": "npm run sync-logos",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

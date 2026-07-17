@@ -14,7 +14,7 @@
     "dev:frontend": "bash scripts/with-node.sh npm run dev --workspace apps/frontend",
     "dev:backend": "bash scripts/with-node.sh npm run dev --workspace apps/backend",
     "start:local": "bash scripts/start-local.sh",
-    "build": "bash scripts/with-node.sh npm run build --workspace @fast-rental/shared && bash scripts/with-node.sh npm run build --workspace @fast-rental/backend && bash scripts/with-node.sh npm run build --workspace @fast-rental/frontend",
+    "build": "bash scripts/with-node.sh npm run build --workspace @fast-rental/shared && node scripts/sync-logos.mjs && bash scripts/with-node.sh npm run build --workspace @fast-rental/backend && bash scripts/with-node.sh npm run build --workspace @fast-rental/frontend",
     "lint": "bash scripts/with-node.sh npm run lint --workspace @fast-rental/shared && bash scripts/with-node.sh npm run lint --workspace @fast-rental/backend && bash scripts/with-node.sh npm run lint --workspace @fast-rental/frontend",
     "test": "bash scripts/with-node.sh npm run test --workspace @fast-rental/backend",
     "supabase": "supabase",

@@ -131,7 +131,13 @@ else
 fi
 
 # ── 6. Start servers ─────────────────────────────────────────────────────────
-step "6/7" "Starting dev servers"
+step "6/8" "Syncing logos from shared/logo"
+if ! bash scripts/with-node.sh node scripts/sync-logos.mjs; then
+  warn "6/8 sync-logos" \
+    "Logo sync failed.\nDebug:\n  - Ensure shared/logo/logo-logigo.ico exists\n  - For login logo crop: python3 + Pillow (pip install Pillow)"
+fi
+
+step "7/8" "Starting dev servers"
 echo "  Backend  → http://localhost:4000"
 echo "  Frontend → http://localhost:5173"
 echo "  (Union Rental is separate — :4001 API, :5174 web; not started by this script)"
@@ -153,7 +159,7 @@ if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
 fi
 
 # ── 7. Health check ──────────────────────────────────────────────────────────
-step "7/7" "Backend health check"
+step "8/8" "Backend health check"
 HEALTH_OK=0
 for i in 1 2 3 4 5 6 7 8 9 10; do
   if curl -sf http://localhost:4000/health | grep -q '"ok":true'; then

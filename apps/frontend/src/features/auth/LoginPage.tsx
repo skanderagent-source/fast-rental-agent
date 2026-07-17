@@ -10,6 +10,7 @@ import { useRateLimitedAction } from '../../lib/useRateLimitedAction';
 import { requestPasswordReset } from './authApi';
 import { validateLogin } from './validation';
 import { isOnline, OFFLINE_MESSAGE } from '../../lib/onlineStatus';
+import logoUrl from '../../assets/logo-display.png';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -97,9 +98,11 @@ export function LoginPage() {
 
       <div className="login-card">
         <header className="login-card__header">
-          <img src="/logo.png" alt="" className="login-card__logo" width={56} height={56} />
-          <h1 className="login-card__title">LogiGo Agent</h1>
-          <p className="login-card__subtitle">Portail agents — Fast Rental</p>
+          <div className="login-card__logo-wrap">
+            <img src={logoUrl} alt="LogiGo" className="login-card__logo" />
+          </div>
+          <h1 className="login-card__title">LogiGo</h1>
+          <p className="login-card__subtitle">Portail agents</p>
         </header>
 
         {sessionExpired && (

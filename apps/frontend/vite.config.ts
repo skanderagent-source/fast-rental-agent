@@ -1,10 +1,13 @@
 import react from '@vitejs/plugin-react';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const sharedLogoDir = path.resolve(__dirname, '../../shared/logo');
+const faviconSrc = path.join(sharedLogoDir, 'favicon.ico');
+const faviconDest = path.join(__dirname, 'public/favicon.ico');
 const frontendPkg = JSON.parse(
   readFileSync(path.join(__dirname, 'package.json'), 'utf8'),
 ) as { version: string };
@@ -26,6 +29,23 @@ function assertProductionHttpsUrls(env: Record<string, string>) {
       throw new Error(`${name} must use HTTPS in production builds to avoid mixed content (got ${url.protocol})`);
     }
   }
+}
+
+function sharedLogoPlugin(): Plugin {
+  const syncFavicon = () => {
+    if (!existsSync(faviconSrc)) {
+      throw new Error(`Missing favicon source: ${faviconSrc}`);
+    }
+    copyFileSync(faviconSrc, faviconDest);
+  };
+
+  return {
+    name: 'shared-logo-favicon',
+    buildStart: syncFavicon,
+    configureServer() {
+      syncFavicon();
+    },
+  };
 }
 
 function productionCspPlugin(mode: string): Plugin {
@@ -75,7 +95,12 @@ export default defineConfig(({ mode }) => {
   const buildId = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? frontendPkg.version;
 
   return {
-    plugins: [react(), productionCspPlugin(mode)],
+    plugins: [sharedLogoPlugin(), react(), productionCspPlugin(mode)],
+    resolve: {
+      alias: {
+        '@shared/logo': path.resolve(__dirname, '../../shared/logo'),
+      },
+    },
     define: {
       'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId),
     },
