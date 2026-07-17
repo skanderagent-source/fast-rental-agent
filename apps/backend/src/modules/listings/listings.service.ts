@@ -206,6 +206,7 @@ export async function listMapListings() {
   } = await supabaseAdmin
     .from('logements')
     .select(mapFields, { count: 'exact' })
+    .eq('statut', 'Available')
     .is('deleted_at', null)
     .order('adresse', { ascending: true })
     .order('id', { ascending: true })
@@ -223,6 +224,7 @@ export async function listMapListings() {
     const { data, error } = await supabaseAdmin
       .from('logements')
       .select(mapFields)
+      .eq('statut', 'Available')
       .is('deleted_at', null)
       .order('adresse', { ascending: true })
       .order('id', { ascending: true })

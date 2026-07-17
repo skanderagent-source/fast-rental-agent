@@ -32,7 +32,7 @@ export const MAX_IMAGE_SIZE_MB = 15;
 export const MAX_VIDEO_SIZE_MB = 250;
 /** Reject decompression bombs and oversized listing photos after upload inspection. */
 export const MAX_IMAGE_PIXEL_DIMENSION = 8192;
-export const MAX_MAP_LISTINGS = 5000;
+export const MAX_MAP_LISTINGS = 3000;
 /** Hard cap on rows loaded for listing search/sort to prevent memory exhaustion. */
 export const MAX_LISTING_SEARCH_ROWS = 2500;
 /** Hard caps on unpaginated authenticated list endpoints. */
