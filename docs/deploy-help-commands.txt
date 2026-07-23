@@ -1,16 +1,17 @@
-# Backend update :
+# Backend update
 
-# cd /var/www/fast-rental
-# git pull origin main
+# cd /var/www/fast-rental && git fetch origin Frenki && git switch -C Frenki origin/Frenki && git reset --hard origin/Frenki
 # bash scripts/deploy-vps.sh
+
 
 # Deploy verification :
 
 # pm2 status
 # pm2 logs fast-rental-api --lines 50
 # curl -sf http://127.0.0.1:4000/health
-# curl -I https://api.your-domain.com/health   # from VPS or your machine
+# curl -I https://api.logigo-agent.ca/health
+
 
 # Changes that need to be pushed on the DB :
 
-# pm run db:push
+# npm run db:push
