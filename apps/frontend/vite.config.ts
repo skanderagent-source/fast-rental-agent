@@ -14,25 +14,18 @@ const frontendPkg = JSON.parse(
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
 
-const PRODUCTION_BUILD_ENV_KEYS = [
-  'VITE_API_BASE_URL',
-  'VITE_SUPABASE_URL',
-  'VITE_SUPABASE_ANON_KEY',
-  'VITE_PUBLIC_SITE_URL',
-] as const;
-
 const PRODUCTION_CSP_ENV_KEYS = [
   'VITE_API_BASE_URL',
   'VITE_SUPABASE_URL',
   'VITE_PUBLIC_SITE_URL',
 ] as const;
 
-/** Match Vite's client env resolution: .env files + process.env (Vercel injects the latter). */
+/** Used when env vars are available at build time (local prod builds). Vercel uses vercel.json CSP + runtime config. */
 function resolveProductionEnv(mode: string): Record<string, string> {
   const fromFrontend = loadEnv(mode, __dirname, 'VITE_');
   const fromRoot = loadEnv(mode, REPO_ROOT, 'VITE_');
   const merged = { ...fromRoot, ...fromFrontend };
-  for (const name of PRODUCTION_BUILD_ENV_KEYS) {
+  for (const name of PRODUCTION_CSP_ENV_KEYS) {
     const fromProcess = process.env[name];
     if (fromProcess !== undefined && fromProcess !== '') {
       merged[name] = fromProcess;
@@ -41,64 +34,14 @@ function resolveProductionEnv(mode: string): Record<string, string> {
   return merged;
 }
 
-function requireProductionEnv(
-  env: Record<string, string>,
-  name: (typeof PRODUCTION_BUILD_ENV_KEYS)[number],
-): string {
-  const value = env[name]?.trim();
-  if (!value) {
-    throw new Error(
-      `${name} is required for production builds (set it in the Vercel project Environment Variables for Production and Preview, or in apps/frontend/.env for local builds)`,
-    );
-  }
-  return value;
-}
-
-function assertProductionSupabaseAnonKey(env: Record<string, string>) {
-  const key = requireProductionEnv(env, 'VITE_SUPABASE_ANON_KEY');
-  const looksLikeJwt = key.startsWith('eyJ');
-  const looksLikePublishableKey = key.startsWith('sb_publishable_') || key.startsWith('sb_pub_');
-  if (!looksLikeJwt && !looksLikePublishableKey) {
-    throw new Error(
-      'VITE_SUPABASE_ANON_KEY must be the Supabase anon/public key from Project Settings → API',
-    );
-  }
-}
-
-function assertProductionHttpsUrls(env: Record<string, string>) {
-  for (const name of ['VITE_API_BASE_URL', 'VITE_SUPABASE_URL', 'VITE_PUBLIC_SITE_URL'] as const) {
-    const value = env[name];
-    if (!value) continue;
-    const url = new URL(value);
-    if (url.protocol !== 'https:') {
-      throw new Error(`${name} must use HTTPS in production builds to avoid mixed content (got ${url.protocol})`);
-    }
-  }
-}
-
-function assertProductionBuildEnv(mode: string) {
-  if (mode !== 'production') return;
-
-  const env = resolveProductionEnv(mode);
-  const missing = PRODUCTION_BUILD_ENV_KEYS.filter((name) => !env[name]?.trim());
-  if (missing.length) {
-    throw new Error(
-      `Missing production frontend env: ${missing.join(', ')}. `
-      + 'Set each in Vercel → Project → Settings → Environment Variables for both Production and Preview '
-      + '(Vite embeds VITE_* at build time).',
-    );
-  }
-
-  assertProductionSupabaseAnonKey(env);
-  assertProductionHttpsUrls(env);
+function hasProductionCspEnv(env: Record<string, string>): boolean {
+  return PRODUCTION_CSP_ENV_KEYS.every((name) => Boolean(env[name]?.trim()));
 }
 
 function requireProductionUrl(env: Record<string, string>, name: (typeof PRODUCTION_CSP_ENV_KEYS)[number]): string {
   const value = env[name]?.trim();
   if (!value) {
-    throw new Error(
-      `${name} is required for production builds (set it in the Vercel project Environment Variables for Production and Preview, or in apps/frontend/.env for local builds)`,
-    );
+    throw new Error(`${name} must be a valid absolute URL to build the production CSP (got empty)`);
   }
   try {
     return new URL(value).origin;
@@ -124,6 +67,24 @@ function sharedLogoPlugin(): Plugin {
   };
 }
 
+/** Vercel serves public config from /api/runtime-config.js at request time. */
+function productionRuntimeConfigPlugin(mode: string): Plugin {
+  return {
+    name: 'fast-rental-production-runtime-config',
+    transformIndexHtml(html) {
+      if (mode !== 'production') return html;
+      return {
+        html,
+        tags: [{
+          tag: 'script',
+          attrs: { src: '/api/runtime-config.js' },
+          injectTo: 'head-prepend',
+        }],
+      };
+    },
+  };
+}
+
 function productionCspPlugin(mode: string): Plugin {
   return {
     name: 'fast-rental-production-csp',
@@ -131,7 +92,11 @@ function productionCspPlugin(mode: string): Plugin {
       if (mode !== 'production') return html;
 
       const env = resolveProductionEnv(mode);
-      assertProductionHttpsUrls(env);
+      if (!hasProductionCspEnv(env)) {
+        // Vercel builds without build-time env: CSP comes from vercel.json connect-src.
+        return html;
+      }
+
       const apiOrigin = requireProductionUrl(env, 'VITE_API_BASE_URL');
       const supabaseOrigin = requireProductionUrl(env, 'VITE_SUPABASE_URL');
       const supabaseWebSocket = supabaseOrigin.replace(/^https:/, 'wss:');
@@ -168,12 +133,15 @@ function productionCspPlugin(mode: string): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  assertProductionBuildEnv(mode);
-
   const buildId = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? frontendPkg.version;
 
   return {
-    plugins: [sharedLogoPlugin(), react(), productionCspPlugin(mode)],
+    plugins: [
+      sharedLogoPlugin(),
+      react(),
+      productionRuntimeConfigPlugin(mode),
+      productionCspPlugin(mode),
+    ],
     resolve: {
       alias: {
         '@shared/logo': path.resolve(__dirname, '../../shared/logo'),

@@ -9,10 +9,11 @@
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `VITE_PUBLIC_SITE_URL` (Union Rental public URL)
-4. Build/deploy with all four values present. The production build uses
-   `VITE_API_BASE_URL` and `VITE_SUPABASE_URL` to generate the exact
-   `connect-src` Content Security Policy; empty or invalid URLs fail the build.
-5. Enable each variable for **Production** and **Preview** (Vite reads them at **build** time, not runtime).
+4. Enable each variable for **Production** and **Preview**. On Vercel the app loads
+   them at **request time** via `/api/runtime-config.js` (not baked into the static
+   bundle). Local production builds still read `apps/frontend/.env` when present.
+5. `vercel.json` includes a production `connect-src` CSP for the API and Supabase
+   origins; update it if those URLs change.
 6. Deploy. After deploy, update:
    - Supabase Auth redirect URLs
    - Backend `FRONTEND_ORIGIN`
@@ -29,14 +30,14 @@ Symptoms after redeploy:
 - Browser: `Cross-Origin Request Blocked … CORS request did not succeed` (status `null`)
 - Supabase response: `No API key found in request`
 
-Cause: the production bundle was built **without** `VITE_SUPABASE_ANON_KEY`, so the Supabase client never sends the `apikey` header. Vite embeds `VITE_*` variables during `npm run build`; changing env vars in Vercel without rebuilding does nothing.
+Cause: `/api/runtime-config.js` did not load or returned without `VITE_SUPABASE_ANON_KEY`, so the Supabase client never sends the `apikey` header.
 
 Fix:
 
-1. Vercel → Project → Settings → Environment Variables — confirm all four `VITE_*` vars exist, scoped to **Production** and **Preview**, with the anon key copied from Supabase → Project Settings → API (`anon` `public`).
-2. Redeploy (Deployments → … → Redeploy, or push a commit). The build must fail early if any `VITE_*` value is missing.
+1. Vercel → Project → Settings → Environment Variables — confirm all four `VITE_*` vars exist, scoped to **Production** and **Preview**, with the anon key copied from Supabase → Project Settings → API (`anon` / publishable).
+2. Open `https://YOUR_AGENT_DOMAIN/api/runtime-config.js` in the browser — it should return `window.__FAST_RENTAL_ENV__={...}` with all four keys. A 500 or console error lists what is missing.
 3. If you use `npm run deploy:vercel`, export the four `VITE_*` vars in your shell **or** omit them so Vercel project settings are used. Do not pass empty `--build-env` values.
-4. On the live site, View Source on `/` and confirm the CSP `connect-src` includes your `*.supabase.co` origin.
+4. On the live site, View Source on `/` and confirm `<script src="/api/runtime-config.js">` appears before the app bundle.
 
 ## Hostinger VPS (backend) — Phase 22
 
