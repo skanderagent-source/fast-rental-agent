@@ -12,6 +12,13 @@ const frontendPkg = JSON.parse(
   readFileSync(path.join(__dirname, 'package.json'), 'utf8'),
 ) as { version: string };
 
+const PRODUCTION_BUILD_ENV_KEYS = [
+  'VITE_API_BASE_URL',
+  'VITE_SUPABASE_URL',
+  'VITE_SUPABASE_ANON_KEY',
+  'VITE_PUBLIC_SITE_URL',
+] as const;
+
 const PRODUCTION_CSP_ENV_KEYS = [
   'VITE_API_BASE_URL',
   'VITE_SUPABASE_URL',
@@ -22,11 +29,35 @@ function resolveProductionEnv(mode: string): Record<string, string> {
   const envDir = __dirname;
   const fromFiles = loadEnv(mode, envDir, '');
   const merged = { ...fromFiles };
-  for (const name of PRODUCTION_CSP_ENV_KEYS) {
+  for (const name of PRODUCTION_BUILD_ENV_KEYS) {
     const fromProcess = process.env[name];
     if (fromProcess) merged[name] = fromProcess;
   }
   return merged;
+}
+
+function requireProductionEnv(
+  env: Record<string, string>,
+  name: (typeof PRODUCTION_BUILD_ENV_KEYS)[number],
+): string {
+  const value = env[name]?.trim();
+  if (!value) {
+    throw new Error(
+      `${name} is required for production builds (set it in the Vercel project Environment Variables for Production and Preview, or in apps/frontend/.env for local builds)`,
+    );
+  }
+  return value;
+}
+
+function assertProductionSupabaseAnonKey(env: Record<string, string>) {
+  const key = requireProductionEnv(env, 'VITE_SUPABASE_ANON_KEY');
+  const looksLikeJwt = key.startsWith('eyJ');
+  const looksLikePublishableKey = key.startsWith('sb_publishable_') || key.startsWith('sb_pub_');
+  if (!looksLikeJwt && !looksLikePublishableKey) {
+    throw new Error(
+      'VITE_SUPABASE_ANON_KEY must be the Supabase anon/public key from Project Settings → API',
+    );
+  }
 }
 
 function requireProductionUrl(env: Record<string, string>, name: (typeof PRODUCTION_CSP_ENV_KEYS)[number]): string {
@@ -67,6 +98,21 @@ function sharedLogoPlugin(): Plugin {
     buildStart: syncFavicon,
     configureServer() {
       syncFavicon();
+    },
+  };
+}
+
+function productionBuildEnvPlugin(mode: string): Plugin {
+  return {
+    name: 'fast-rental-production-build-env',
+    buildStart() {
+      if (mode !== 'production') return;
+      const env = resolveProductionEnv(mode);
+      for (const name of PRODUCTION_BUILD_ENV_KEYS) {
+        requireProductionEnv(env, name);
+      }
+      assertProductionSupabaseAnonKey(env);
+      assertProductionHttpsUrls(env);
     },
   };
 }
@@ -118,7 +164,7 @@ export default defineConfig(({ mode }) => {
   const buildId = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? frontendPkg.version;
 
   return {
-    plugins: [sharedLogoPlugin(), react(), productionCspPlugin(mode)],
+    plugins: [sharedLogoPlugin(), react(), productionBuildEnvPlugin(mode), productionCspPlugin(mode)],
     resolve: {
       alias: {
         '@shared/logo': path.resolve(__dirname, '../../shared/logo'),

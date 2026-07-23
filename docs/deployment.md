@@ -12,7 +12,8 @@
 4. Build/deploy with all four values present. The production build uses
    `VITE_API_BASE_URL` and `VITE_SUPABASE_URL` to generate the exact
    `connect-src` Content Security Policy; empty or invalid URLs fail the build.
-5. Deploy. After deploy, update:
+5. Enable each variable for **Production** and **Preview** (Vite reads them at **build** time, not runtime).
+6. Deploy. After deploy, update:
    - Supabase Auth redirect URLs
    - Backend `FRONTEND_ORIGIN`
    - R2 CORS allowed origins
@@ -20,6 +21,22 @@
    `nosniff`, Referrer-Policy, and Permissions-Policy. In browser DevTools,
    confirm the generated CSP permits only the production API, Supabase,
    Cloudflare R2, and OpenStreetMap resources used by the app.
+
+### Troubleshooting: Supabase login CORS / "No API key found"
+
+Symptoms after redeploy:
+
+- Browser: `Cross-Origin Request Blocked … CORS request did not succeed` (status `null`)
+- Supabase response: `No API key found in request`
+
+Cause: the production bundle was built **without** `VITE_SUPABASE_ANON_KEY`, so the Supabase client never sends the `apikey` header. Vite embeds `VITE_*` variables during `npm run build`; changing env vars in Vercel without rebuilding does nothing.
+
+Fix:
+
+1. Vercel → Project → Settings → Environment Variables — confirm all four `VITE_*` vars exist, scoped to **Production** and **Preview**, with the anon key copied from Supabase → Project Settings → API (`anon` `public`).
+2. Redeploy (Deployments → … → Redeploy, or push a commit). The build must fail early if any `VITE_*` value is missing.
+3. If you use `npm run deploy:vercel`, export the four `VITE_*` vars in your shell **or** omit them so Vercel project settings are used. Do not pass empty `--build-env` values.
+4. On the live site, View Source on `/` and confirm the CSP `connect-src` includes your `*.supabase.co` origin.
 
 ## Hostinger VPS (backend) — Phase 22
 
