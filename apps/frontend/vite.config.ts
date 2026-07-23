@@ -12,11 +12,34 @@ const frontendPkg = JSON.parse(
   readFileSync(path.join(__dirname, 'package.json'), 'utf8'),
 ) as { version: string };
 
-function urlOrigin(value: string, name: string): string {
+const PRODUCTION_CSP_ENV_KEYS = [
+  'VITE_API_BASE_URL',
+  'VITE_SUPABASE_URL',
+  'VITE_PUBLIC_SITE_URL',
+] as const;
+
+function resolveProductionEnv(mode: string): Record<string, string> {
+  const envDir = __dirname;
+  const fromFiles = loadEnv(mode, envDir, '');
+  const merged = { ...fromFiles };
+  for (const name of PRODUCTION_CSP_ENV_KEYS) {
+    const fromProcess = process.env[name];
+    if (fromProcess) merged[name] = fromProcess;
+  }
+  return merged;
+}
+
+function requireProductionUrl(env: Record<string, string>, name: (typeof PRODUCTION_CSP_ENV_KEYS)[number]): string {
+  const value = env[name]?.trim();
+  if (!value) {
+    throw new Error(
+      `${name} is required for production builds (set it in the Vercel project Environment Variables for Production and Preview, or in apps/frontend/.env for local builds)`,
+    );
+  }
   try {
     return new URL(value).origin;
   } catch {
-    throw new Error(`${name} must be a valid absolute URL to build the production CSP`);
+    throw new Error(`${name} must be a valid absolute URL to build the production CSP (got ${JSON.stringify(value)})`);
   }
 }
 
@@ -54,10 +77,10 @@ function productionCspPlugin(mode: string): Plugin {
     transformIndexHtml(html) {
       if (mode !== 'production') return html;
 
-      const env = loadEnv(mode, process.cwd(), '');
+      const env = resolveProductionEnv(mode);
       assertProductionHttpsUrls(env);
-      const apiOrigin = urlOrigin(env.VITE_API_BASE_URL ?? '', 'VITE_API_BASE_URL');
-      const supabaseOrigin = urlOrigin(env.VITE_SUPABASE_URL ?? '', 'VITE_SUPABASE_URL');
+      const apiOrigin = requireProductionUrl(env, 'VITE_API_BASE_URL');
+      const supabaseOrigin = requireProductionUrl(env, 'VITE_SUPABASE_URL');
       const supabaseWebSocket = supabaseOrigin.replace(/^https:/, 'wss:');
       const policy = [
         "default-src 'self'",

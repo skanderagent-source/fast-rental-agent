@@ -2,7 +2,7 @@
   "name": "fast-rental-fullstack",
   "private": true,
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
   "workspaces": [
     "apps/frontend",
