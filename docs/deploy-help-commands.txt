@@ -1,37 +1,31 @@
-# Backend update
+Backend update
 
-# cd /var/www/fast-rental && git fetch origin Frenki && git switch -C Frenki origin/Frenki && git reset --hard origin/Frenki
-# bash scripts/deploy-vps.sh
-
-
-# Deploy verification :
-
-# pm2 status
-# pm2 logs fast-rental-api --lines 50
-# curl -sf http://127.0.0.1:4000/health
-# curl -I https://api.logigo-agent.ca/health
+cd /var/www/fast-rental
+git fetch origin Frenki
+git switch -C Frenki origin/Frenki
+git reset --hard origin/Frenki
+bash scripts/deploy-vps.sh
 
 
-# Changes that need to be pushed on the DB :
+PM2 Deploy Verification :
 
-# npm run db:push
-
-
-# Caddy :
-
-# sudo nano /etc/caddy/Caddyfile
-# sudo caddy validate --config /etc/caddy/Caddyfile
-# sudo systemctl reload caddy
-# sudo systemctl status caddy
-# curl -I http://api.logigo-agent.ca/health
-# curl -I https://api.logigo-agent.ca/health
+cd /var/www/fast-rental
+pm2 restart fast-rental-api
+pm2 status
+curl -v http://127.0.0.1:4000/health
+curl -v http://127.0.0.1:4001/health
 
 
-# PM2 :
+Caddy :
 
-# cd /var/www/fast-rental
-# pm2 restart fast-rental-api
-# bash scripts/deploy-vps.sh
-# pm2 status
-# curl -v http://127.0.0.1:4000/health
-# curl -v http://127.0.0.1:4001/health
+sudo nano /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+sudo systemctl status caddy
+curl -I http://api.logigo-agent.ca/health
+curl -I https://api.logigo-agent.ca/health
+
+
+Changes that need to be pushed on the DB :
+
+npm run db:push
