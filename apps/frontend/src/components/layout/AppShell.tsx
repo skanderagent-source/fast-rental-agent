@@ -43,23 +43,33 @@ export function AppShell() {
         </div>
       </header>
       <nav className={`tabs app-tabs${isAdmin ? ' app-tabs--admin' : ''}`}>
-        {tabs.map((tab) => (
-          <NavLink key={tab.to} to={tab.to} className={tabClassName}>
-            <span className="app-tab__label">
-              {tab.label}
-              {tab.badgeKey === 'leads' && badgeCount > 0 && (
-                <span className="app-tab__badge">{badgeCount}</span>
-              )}
-            </span>
-          </NavLink>
-        ))}
+        {tabs.map((tab) => {
+          const showBadge = tab.badgeKey === 'leads' && badgeCount > 0;
+          return (
+            <NavLink key={tab.to} to={tab.to} className={tabClassName}>
+              <span className={`app-tab__label${showBadge ? ' app-tab__label--with-badge' : ''}`}>
+                {showBadge && (
+                  <span className="app-tab__badge app-tab__badge--spacer" aria-hidden="true">
+                    {badgeCount}
+                  </span>
+                )}
+                <span className="app-tab__text">{tab.label}</span>
+                {showBadge && <span className="app-tab__badge">{badgeCount}</span>}
+              </span>
+            </NavLink>
+          );
+        })}
         {isAdmin && (
           <>
             <NavLink to="admin/listings/new" className={tabClassName}>
-              <span className="app-tab__label">Ajouter Logement</span>
+              <span className="app-tab__label">
+                <span className="app-tab__text">Ajouter Logement</span>
+              </span>
             </NavLink>
             <NavLink to="admin" end className={tabClassName}>
-              <span className="app-tab__label">Gestion</span>
+              <span className="app-tab__label">
+                <span className="app-tab__text">Gestion</span>
+              </span>
             </NavLink>
           </>
         )}
