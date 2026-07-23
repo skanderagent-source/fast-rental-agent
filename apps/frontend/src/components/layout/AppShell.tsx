@@ -48,11 +48,6 @@ export function AppShell() {
           return (
             <NavLink key={tab.to} to={tab.to} className={tabClassName}>
               <span className={`app-tab__label${showBadge ? ' app-tab__label--with-badge' : ''}`}>
-                {showBadge && (
-                  <span className="app-tab__badge app-tab__badge--spacer" aria-hidden="true">
-                    {badgeCount}
-                  </span>
-                )}
                 <span className="app-tab__text">{tab.label}</span>
                 {showBadge && <span className="app-tab__badge">{badgeCount}</span>}
               </span>
