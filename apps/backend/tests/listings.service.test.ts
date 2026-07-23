@@ -22,9 +22,12 @@ vi.mock('../src/modules/media/storage.service.js', () => ({
   isLocalStorage: vi.fn(() => false),
   objectExists: vi.fn(),
   putObject: vi.fn(),
+  readObjectPrefix: vi.fn(),
+  readObjectSize: vi.fn(),
 }));
 
-import { listUserMedia, updateListing } from '../src/modules/listings/listings.service.js';
+import { deleteObject } from '../src/modules/media/storage.service.js';
+import { listUserMedia, softDeleteListing, updateListing } from '../src/modules/listings/listings.service.js';
 
 const existingListing = {
   id: 'listing-1',
@@ -98,6 +101,41 @@ describe('updateListing geocoding', () => {
       geocoding_status: 'pending',
     }));
     expect(mockGeocodeListing).toHaveBeenCalledWith(existingListing.id);
+  });
+});
+
+describe('softDeleteListing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('deletes listing media from R2 and the database before soft-deleting the listing', async () => {
+    const mediaChain = mockChain({
+      data: [
+        { id: 'media-1', object_key: 'listings/listing-1/photo.jpg' },
+        { id: 'media-2', object_key: 'listings/listing-1/video.mp4' },
+      ],
+      error: null,
+    });
+    const mediaDeleteChain = mockChain({ data: null, error: null });
+    const listingDeleteChain = mockChain({
+      data: { ...existingListing, deleted_at: '2026-07-23T00:00:00.000Z' },
+      error: null,
+    });
+    let calls = 0;
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'listing_media') return listingDeleteChain;
+      return [mediaChain, mediaDeleteChain][calls++]!;
+    });
+
+    const result = await softDeleteListing(existingListing.id);
+
+    expect(deleteObject).toHaveBeenCalledTimes(2);
+    expect(deleteObject).toHaveBeenCalledWith('listings/listing-1/photo.jpg');
+    expect(deleteObject).toHaveBeenCalledWith('listings/listing-1/video.mp4');
+    expect(mediaDeleteChain.delete).toHaveBeenCalled();
+    expect(listingDeleteChain.update).toHaveBeenCalledWith({ deleted_at: expect.any(String) });
+    expect(result.deleted_at).toBeTruthy();
   });
 });
 

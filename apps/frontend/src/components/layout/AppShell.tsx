@@ -42,7 +42,7 @@ export function AppShell() {
           <button className="btn-secondary" style={{ padding: '5px 10px', fontSize: 11 }} onClick={() => void signOut()}>Quitter</button>
         </div>
       </header>
-      <nav className="tabs app-tabs">
+      <nav className={`tabs app-tabs${isAdmin ? ' app-tabs--admin' : ''}`}>
         {tabs.map((tab) => (
           <NavLink key={tab.to} to={tab.to} className={tabClassName}>
             <span className="app-tab__label">

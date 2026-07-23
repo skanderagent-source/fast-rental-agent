@@ -370,6 +370,8 @@ export async function updateListing(id: string, input: Record<string, unknown>) 
 }
 
 export async function softDeleteListing(id: string) {
+  await purgeListingMedia(id);
+
   const { data, error } = await supabaseAdmin
     .from('logements')
     .update({ deleted_at: new Date().toISOString() })
@@ -378,6 +380,30 @@ export async function softDeleteListing(id: string) {
     .single();
   if (error) throw error;
   return data;
+}
+
+async function purgeListingMedia(listingId: string) {
+  const { data, error } = await supabaseAdmin
+    .from('listing_media')
+    .select('id, object_key')
+    .eq('listing_id', listingId);
+  if (error) throw error;
+
+  await Promise.all((data ?? []).map(async (media) => {
+    try {
+      await deleteObject(media.object_key);
+    } catch {
+      /* best-effort R2 cleanup */
+    }
+  }));
+
+  if ((data ?? []).length > 0) {
+    const { error: deleteError } = await supabaseAdmin
+      .from('listing_media')
+      .delete()
+      .eq('listing_id', listingId);
+    if (deleteError) throw deleteError;
+  }
 }
 
 export async function listListingMedia(listingId: string, approvedOnly = false) {

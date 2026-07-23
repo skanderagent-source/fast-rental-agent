@@ -3,6 +3,7 @@ import { logger } from '../../config/logger.js';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
 import { logActivity } from '../activity/activity.service.js';
 import { geocodeAllPendingListings } from '../listings/listings.geocode.js';
+import { softDeleteListing } from '../listings/listings.service.js';
 import type { ParsedSheetRow } from './sheetMappings.js';
 import { SHEET_ROW_ID_PREFIXES } from './sheetMappings.js';
 import { collectAllSheetRows } from './sheets.reader.js';
@@ -80,11 +81,7 @@ async function reconcileStaleSheetListings(activeSheetRowIds: Set<string>) {
       const sheetRowId = String(listing.sheet_row_id ?? '');
       if (activeSheetRowIds.has(sheetRowId)) continue;
 
-      const { error: deleteError } = await supabaseAdmin
-        .from('logements')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', listing.id);
-      if (deleteError) throw deleteError;
+      await softDeleteListing(String(listing.id));
       rowsRemoved++;
     }
   }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Play, Trash2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, sensitiveApi } from '../../lib/apiClient';
@@ -55,25 +55,27 @@ export function SearchPanel() {
     return () => clearTimeout(t);
   }, [q]);
 
+  const effectiveQ = debouncedQ.trim().length >= 2 ? debouncedQ.trim() : '';
+
   useEffect(() => {
     const next = new URLSearchParams();
-    if (debouncedQ) next.set('q', debouncedQ);
+    if (effectiveQ) next.set('q', effectiveQ);
     if (quartier) next.set('quartier', quartier);
     if (statut) next.set('statut', statut);
     if (taille) next.set('taille', taille);
     if (source) next.set('source', source);
     setSearchParams(next, { replace: true });
-  }, [debouncedQ, quartier, statut, taille, source, setSearchParams]);
+  }, [effectiveQ, quartier, statut, taille, source, setSearchParams]);
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ page: '1', pageSize: '100' });
-    if (debouncedQ) p.set('q', debouncedQ);
+    if (effectiveQ) p.set('q', effectiveQ);
     if (quartier) p.set('quartier', quartier);
     if (statut) p.set('statut', statut);
     if (taille) p.set('taille', taille);
     if (source) p.set('source', source);
     return p.toString();
-  }, [debouncedQ, quartier, statut, taille, source]);
+  }, [effectiveQ, quartier, statut, taille, source]);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['listings', params],
@@ -85,8 +87,7 @@ export function SearchPanel() {
     [data?.items],
   );
 
-  if (isLoading) return <div className="panel-scroll empty">Chargement des logements...</div>;
-  if (error) return <div className="panel-scroll empty"><div>Erreur de connexion</div><button className="btn-add" onClick={() => void refetch()}>Réessayer</button></div>;
+  const searchTooShort = q.trim().length > 0 && q.trim().length < 2;
 
   return (
     <div className="panel-scroll">
@@ -103,6 +104,9 @@ export function SearchPanel() {
             onChange={setQ}
             aria-label="Rechercher un logement"
           />
+          {searchTooShort && (
+            <p className="search-toolbar__hint">Entrez au moins 2 caractères pour rechercher.</p>
+          )}
         </div>
         <div className="search-filters">
           <div className="search-filter-field">
@@ -141,27 +145,38 @@ export function SearchPanel() {
           </div>
         </div>
       </div>
-      <div className="search-stats">
-        <Stat num={data?.summary.total ?? 0} label="Total" />
-        <Stat num={data?.summary.available ?? 0} label="Dispo" color="var(--green)" />
-        <Stat num={data?.summary.onHold ?? 0} label="Attente" color="var(--amber)" />
-        <Stat num={data?.summary.averagePrice ? Math.round(data.summary.averagePrice).toLocaleString('fr-CA') + '$' : '-'} label="Moy." />
-      </div>
-      <div className="search-results">
-        {(data?.items ?? []).map((listing) => (
-          <ListingCard
-            key={listing.id}
-            listing={listing}
-            open={openId === listing.id}
-            onToggle={() => setOpenId(openId === listing.id ? null : listing.id)}
-            toast={toast}
-            profile={profile}
-            isAdmin={isAdmin}
-            onOpenAction={(prefix) => setActionModal({ listing, prefix })}
-            onOpenFb={() => setFbModal(listing)}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="search-status empty">Chargement des logements...</div>
+      ) : error ? (
+        <div className="search-status empty">
+          <div>Erreur de connexion</div>
+          <button className="btn-add" type="button" onClick={() => void refetch()}>Réessayer</button>
+        </div>
+      ) : (
+        <>
+          <div className="search-stats">
+            <Stat num={data?.summary.total ?? 0} label="Total" />
+            <Stat num={data?.summary.available ?? 0} label="Dispo" color="var(--green)" />
+            <Stat num={data?.summary.onHold ?? 0} label="Attente" color="var(--amber)" />
+            <Stat num={data?.summary.averagePrice ? Math.round(data.summary.averagePrice).toLocaleString('fr-CA') + '$' : '-'} label="Moy." />
+          </div>
+          <div className="search-results">
+            {(data?.items ?? []).map((listing) => (
+              <ListingCard
+                key={listing.id}
+                listing={listing}
+                open={openId === listing.id}
+                onToggle={() => setOpenId(openId === listing.id ? null : listing.id)}
+                toast={toast}
+                profile={profile}
+                isAdmin={isAdmin}
+                onOpenAction={(prefix) => setActionModal({ listing, prefix })}
+                onOpenFb={() => setFbModal(listing)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       <ApplicationMessageModal
         open={!!actionModal}
@@ -591,8 +606,11 @@ function MediaTile({
             <div className="empty">Image</div>
           )
         ) : mediaSrc ? (
-          <button type="button" className="media-tile__preview" aria-label="Voir en grand" onClick={onPreview}>
+          <button type="button" className="media-tile__preview media-tile__preview--video" aria-label="Voir en grand" onClick={onPreview}>
             <video src={mediaSrc} muted preload="metadata" />
+            <span className="media-play-badge" aria-hidden>
+              <Play size={28} strokeWidth={2.25} fill="currentColor" />
+            </span>
           </button>
         ) : (
           <div className="empty">Vidéo</div>
@@ -621,29 +639,35 @@ function MediaTile({
         >
           <Download size={14} strokeWidth={2.25} />
         </button>
+        {canManage && (
+          <>
+            <button
+              type="button"
+              className="media-overlay-btn media-overlay-btn--order-left"
+              aria-label="Déplacer vers la gauche"
+              disabled={index === 0}
+              onClick={(e) => {
+                e.stopPropagation();
+                onMove(-1);
+              }}
+            >
+              <ChevronLeft size={16} strokeWidth={2.5} />
+            </button>
+            <button
+              type="button"
+              className="media-overlay-btn media-overlay-btn--order-right"
+              aria-label="Déplacer vers la droite"
+              disabled={index === total - 1}
+              onClick={(e) => {
+                e.stopPropagation();
+                onMove(1);
+              }}
+            >
+              <ChevronRight size={16} strokeWidth={2.5} />
+            </button>
+          </>
+        )}
       </div>
-      {canManage && (
-        <div className="media-order-controls">
-          <button
-            type="button"
-            className="media-order-btn"
-            aria-label="Déplacer vers la gauche"
-            disabled={index === 0}
-            onClick={() => onMove(-1)}
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            className="media-order-btn"
-            aria-label="Déplacer vers la droite"
-            disabled={index === total - 1}
-            onClick={() => onMove(1)}
-          >
-            →
-          </button>
-        </div>
-      )}
     </div>
   );
 }

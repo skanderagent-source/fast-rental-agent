@@ -20,6 +20,9 @@
   --red-bg: #3d0d0d;
   --blue-bg: #001e3d;
   --purple-bg: #2d0a3d;
+  --brand: #158032;
+  --brand-hover: #1a9439;
+  --brand-muted: #0d4d1f;
   --radius: 12px;
   --radius-sm: 8px;
 }

@@ -1,0 +1,16 @@
+# Backend update :
+
+# cd /var/www/fast-rental
+# git pull origin main
+# bash scripts/deploy-vps.sh
+
+# Deploy verification :
+
+# pm2 status
+# pm2 logs fast-rental-api --lines 50
+# curl -sf http://127.0.0.1:4000/health
+# curl -I https://api.your-domain.com/health   # from VPS or your machine
+
+# Changes that need to be pushed on the DB :
+
+# pm run db:push

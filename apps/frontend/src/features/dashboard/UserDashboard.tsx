@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Download, Trash2 } from 'lucide-react';
+import { Download, Play, Trash2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabaseClient';
 import { api, ApiError, sensitiveApi } from '../../lib/apiClient';
@@ -627,14 +627,19 @@ function MyMediaSection({
                   <div key={media.id} className="my-media-thumb">
                     <button
                       type="button"
-                      className="my-media-thumb__preview"
+                      className={`my-media-thumb__preview${media.type === 'video' ? ' my-media-thumb__preview--video' : ''}`}
                       aria-label="Voir en grand"
                       onClick={() => openPreview(media)}
                     >
                       {media.type === 'image' && safeMediaSrc(media.viewUrl) ? (
                         <img src={safeMediaSrc(media.viewUrl)} alt={sanitizeFilenameForDisplay(media.original_filename)} />
                       ) : media.type === 'video' && safeMediaSrc(media.viewUrl) ? (
-                        <video src={safeMediaSrc(media.viewUrl)} muted preload="metadata" />
+                        <>
+                          <video src={safeMediaSrc(media.viewUrl)} muted preload="metadata" />
+                          <span className="media-play-badge" aria-hidden>
+                            <Play size={24} strokeWidth={2.25} fill="currentColor" />
+                          </span>
+                        </>
                       ) : (
                         <span className="my-media-thumb__placeholder">{media.type === 'video' ? '🎬' : '📷'}</span>
                       )}
