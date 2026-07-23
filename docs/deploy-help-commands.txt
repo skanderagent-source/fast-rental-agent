@@ -15,3 +15,23 @@
 # Changes that need to be pushed on the DB :
 
 # npm run db:push
+
+
+# Caddy :
+
+# sudo nano /etc/caddy/Caddyfile
+# sudo caddy validate --config /etc/caddy/Caddyfile
+# sudo systemctl reload caddy
+# sudo systemctl status caddy
+# curl -I http://api.logigo-agent.ca/health
+# curl -I https://api.logigo-agent.ca/health
+
+
+# PM2 :
+
+# cd /var/www/fast-rental
+# pm2 restart fast-rental-api
+# bash scripts/deploy-vps.sh
+# pm2 status
+# curl -v http://127.0.0.1:4000/health
+# curl -v http://127.0.0.1:4001/health
