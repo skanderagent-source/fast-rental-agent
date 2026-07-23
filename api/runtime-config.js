@@ -1,4 +1,8 @@
-/** Vercel serverless: inject public frontend config at request time (not build time). */
+/** Vercel Edge: inject public frontend config at request time (not build time). */
+export const config = {
+  runtime: 'edge',
+};
+
 const PUBLIC_KEYS = [
   'VITE_API_BASE_URL',
   'VITE_SUPABASE_URL',
@@ -6,21 +10,27 @@ const PUBLIC_KEYS = [
   'VITE_PUBLIC_SITE_URL',
 ];
 
-module.exports = (_req, res) => {
-  const config = Object.fromEntries(
+export default function handler() {
+  const values = Object.fromEntries(
     PUBLIC_KEYS.map((key) => [key, process.env[key] ?? '']),
   );
-  const missing = PUBLIC_KEYS.filter((key) => !config[key]?.trim());
+  const missing = PUBLIC_KEYS.filter((key) => !values[key]?.trim());
 
-  res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  const headers = {
+    'Cache-Control': 'no-store',
+    'Content-Type': 'application/javascript; charset=utf-8',
+  };
 
   if (missing.length) {
-    res.status(500).send(
-      `console.error("[LogiGo] Missing Vercel env: ${missing.join(', ')}. `
-      + 'Set them in Project → Settings → Environment Variables (Production + Preview).");`,
-    );
-    return;
+    const body = `console.error("[LogiGo] Missing Vercel env: ${missing.join(', ')}. `
+      + 'Set them in Project → Settings → Environment Variables (Production + Preview).");`;
+    return new Response(body, { status: 500, headers });
   }
 
-  res.status(200).send(`window.__FAST_RENTAL_ENV__=${JSON.stringify(config)};`);
+  for (const key of ['VITE_API_BASE_URL', 'VITE_SUPABASE_URL', 'VITE_PUBLIC_SITE_URL']) {
+    values[key] = values[key].replace(/\/+$/, '');
+  }
+
+  const body = `window.__FAST_RENTAL_ENV__=${JSON.stringify(values)};`;
+  return new Response(body, { status: 200, headers });
+}
