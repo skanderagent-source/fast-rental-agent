@@ -3,8 +3,10 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { ProtectedRoute } from './ProtectedRoute';
 import { AppShell } from '../components/layout/AppShell';
 import { LoginPage } from '../features/auth/LoginPage';
+import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
 import { ForcePasswordChangePage } from '../features/auth/ForcePasswordChangePage';
 import { PasswordRecoveryPage } from '../features/auth/PasswordRecoveryPage';
+import { AcceptInvitePage } from '../features/auth/AcceptInvitePage';
 import { SearchPanel } from '../features/agent/SearchPanel';
 import { DemandesPanel } from '../features/agent/DemandesPanel';
 import { UserDashboard } from '../features/dashboard/UserDashboard';
@@ -46,7 +48,9 @@ export function AppRoutes() {
     <Routes>
       <Route path="/" element={<EntryRoute />} />
       <Route path="/agent-login" element={<EntryRoute showLogin />} />
+      <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/auth/reset-password" element={<PasswordRecoveryPage />} />
+      <Route path="/auth/accept-invite" element={<AcceptInvitePage />} />
       <Route path="/auth/force-password-change" element={<ForcePasswordChangePage />} />
       <Route
         path="/app"

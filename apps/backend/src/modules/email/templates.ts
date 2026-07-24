@@ -1,4 +1,4 @@
-import { env } from '../../config/env.js';
+import { primaryFrontendOrigin } from '../../config/env.js';
 
 export function escapeHtml(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, (c) => (
@@ -14,8 +14,7 @@ export function safeEmailHeader(value: unknown): string {
 }
 
 function frontendUrl(path: string) {
-  const base = env.FRONTEND_ORIGIN.split(',')[0]?.trim() ?? 'http://localhost:5173';
-  return `${base}${path}`;
+  return `${primaryFrontendOrigin()}${path}`;
 }
 
 export type EmailContent = { subject: string; html: string; text: string };
@@ -89,10 +88,10 @@ export function accountCreated(input: { nom: string; email: string }): EmailCont
   const text = [
     `Bonjour ${input.nom},`,
     `Email de connexion: ${input.email}`,
-    `Connexion: ${loginUrl}`,
-    'Ton administrateur te communiquera ton mot de passe temporaire. Tu devras le changer à ta première connexion.',
+    'Tu recevras un courriel d’invitation séparé pour choisir ton mot de passe.',
+    `Ensuite, connecte-toi ici: ${loginUrl}`,
   ].join('\n');
-  const html = `<p>Bonjour ${escapeHtml(input.nom)},</p><p>Email de connexion: ${escapeHtml(input.email)}</p><p><a href="${escapeHtml(loginUrl)}">${escapeHtml(loginUrl)}</a></p><p>Ton administrateur te communiquera ton mot de passe temporaire. Tu devras le changer à ta première connexion.</p>`;
+  const html = `<p>Bonjour ${escapeHtml(input.nom)},</p><p>Email de connexion: ${escapeHtml(input.email)}</p><p>Tu recevras un courriel d’invitation séparé pour choisir ton mot de passe.</p><p><a href="${escapeHtml(loginUrl)}">${escapeHtml(loginUrl)}</a></p>`;
   return { subject, html, text };
 }
 

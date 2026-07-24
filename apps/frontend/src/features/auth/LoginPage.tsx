@@ -1,13 +1,10 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../../lib/apiClient';
-import { supabase } from '../../lib/supabaseClient';
+import { setCachedAccessToken, supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../app/providers/AuthProvider';
-import { useToast } from '../../components/common/ToastProvider';
 import { PasswordInput } from '../../components/common/PasswordInput';
 import { SanitizedInput } from '../../components/common/SanitizedField';
-import { useRateLimitedAction } from '../../lib/useRateLimitedAction';
-import { requestPasswordReset } from './authApi';
 import { validateLogin } from './validation';
 import { isOnline, OFFLINE_MESSAGE } from '../../lib/onlineStatus';
 import logoUrl from '../../assets/logo-display.png';
@@ -21,8 +18,6 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const sessionExpired = searchParams.get('expired') === '1';
   const { refreshProfile } = useAuth();
-  const toast = useToast();
-  const passwordResetLimit = useRateLimitedAction('fast-rental:password-reset', 60_000);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,19 +32,20 @@ export function LoginPage() {
     }
     setLoading(true);
     setError('');
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
     if (authError) {
       setError('Email ou mot de passe incorrect');
       setLoading(false);
       return;
     }
+    setCachedAccessToken(authData.session?.access_token ?? null);
     try {
       const profile = await refreshProfile();
       if (profile.must_change_password) {
         navigate('/auth/force-password-change', { replace: true });
         return;
       }
-      await api.post('/api/me/activity/login');
+      await api.post('/api/me/activity/login', undefined, { skipSessionAbort: true });
       navigate('/app/search', { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.code === 'REQUEST_ABORTED') {
@@ -69,26 +65,6 @@ export function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }
-
-  async function forgotPassword() {
-    if (!email) {
-      setError('Entre ton email d\'abord, puis clique « Mot de passe oublié »');
-      return;
-    }
-    if (passwordResetLimit.blocked) {
-      setError(`Réessaie dans ${Math.ceil(passwordResetLimit.remainingMs / 1000)} secondes`);
-      return;
-    }
-    const sent = await passwordResetLimit.run(async () => {
-      await requestPasswordReset(
-        email,
-        `${window.location.origin}/auth/reset-password`,
-      );
-    });
-    if (!sent) return;
-    toast('Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.');
-    setError('');
   }
 
   return (
@@ -154,16 +130,9 @@ export function LoginPage() {
             )}
           </button>
 
-          <button
-            type="button"
-            className="login-forgot"
-            onClick={() => void forgotPassword()}
-            disabled={loading || passwordResetLimit.blocked}
-          >
-            {passwordResetLimit.blocked
-              ? `Réessayer dans ${Math.ceil(passwordResetLimit.remainingMs / 1000)}s`
-              : 'Mot de passe oublié ?'}
-          </button>
+          <Link className="login-forgot" to="/auth/forgot-password">
+            Mot de passe oublié ?
+          </Link>
         </form>
       </div>
 

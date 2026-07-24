@@ -4,10 +4,14 @@ import {
   normalizeReferralUsername,
   referralUsernameFromNom,
 } from '@fast-rental/shared';
+import { primaryFrontendOrigin } from '../../config/env.js';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
-import { emailService } from '../email/email.service.js';
 import { logActivity } from '../activity/activity.service.js';
 import { conflict, forbidden } from '../../utils/httpErrors.js';
+
+function inviteRedirectTo() {
+  return `${primaryFrontendOrigin()}/auth/accept-invite`;
+}
 
 async function assertReferralSlugAvailable(slug: string, excludeUserId?: string) {
   let query = supabaseAdmin.from('agents').select('id').eq('referral_slug', slug);
@@ -30,23 +34,12 @@ export async function listUsers() {
 export async function createUser(input: {
   nom: string;
   email: string;
-  telephone?: string;
-  password: string;
   role: 'admin' | 'agent';
 }, actorId: string, actorNom: string) {
-  const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
-    email: input.email,
-    password: input.password,
-    email_confirm: true,
-    user_metadata: { nom: input.nom, role: input.role },
-  });
-  if (error) throw error;
-
-  const telephone = input.telephone?.trim() || null;
   const referral_slug = referralUsernameFromNom(input.nom);
   if (!referral_slug) {
     throw Object.assign(
-      new Error('Le nom doit être un identifiant valide (a-z, 0-9, 3–32 caractères)'),
+      new Error('Le nom doit être un identifiant valide (lettres a-z, 3–32 caractères)'),
       { status: 400, code: 'VALIDATION_ERROR' },
     );
   }
@@ -58,13 +51,23 @@ export async function createUser(input: {
     .maybeSingle();
   if (existingSlug) throw conflict('Ce nom d\'utilisateur est déjà pris');
 
+  // Invite-only: public signup stays disabled in Supabase; only invited emails get a link.
+  const { data: invited, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(input.email, {
+    data: { nom: input.nom, role: input.role },
+    redirectTo: inviteRedirectTo(),
+  });
+  if (error) throw error;
+  if (!invited.user) {
+    throw Object.assign(new Error('Invitation impossible'), { status: 502, code: 'INVITE_FAILED' });
+  }
+
   const { data: profile, error: profileError } = await supabaseAdmin
     .from('agents')
     .upsert({
-      id: created.user.id,
+      id: invited.user.id,
       email: input.email,
       nom: input.nom,
-      telephone,
+      telephone: null,
       role: input.role,
       actif: true,
       must_change_password: true,
@@ -72,15 +75,17 @@ export async function createUser(input: {
     })
     .select('*')
     .single();
-  if (profileError) throw profileError;
+  if (profileError) {
+    await supabaseAdmin.auth.admin.deleteUser(invited.user.id);
+    throw profileError;
+  }
 
   await logActivity({
     agentId: actorId,
     agentNom: actorNom,
     typeAction: 'compte_cree',
-    details: `Compte créé: ${input.nom} (${input.role})`,
+    details: `Invitation envoyée: ${input.nom} (${input.role})`,
   });
-  emailService.notifyAccountCreated(input.email, { nom: input.nom, email: input.email });
   return profile;
 }
 
@@ -91,7 +96,7 @@ export async function updateUser(id: string, input: { nom?: string; role?: 'admi
     const referral_slug = referralUsernameFromNom(input.nom);
     if (!referral_slug) {
       throw Object.assign(
-        new Error('Le nom doit être un identifiant valide (a-z, 0-9, 3–32 caractères)'),
+        new Error('Le nom doit être un identifiant valide (lettres a-z, 3–32 caractères)'),
         { status: 400, code: 'VALIDATION_ERROR' },
       );
     }

@@ -1,6 +1,6 @@
 // API calls use explicit Bearer auth with credentials: 'omit' (no cookie/CSRF surface).
 // CORS is enforced server-side against FRONTEND_ORIGIN.
-import { supabase } from './supabaseClient';
+import { resolveAccessToken } from './supabaseClient';
 import { env } from './env';
 import { getApiAbortSignal } from './authSession';
 import type { SensitiveAction } from '@fast-rental/shared';
@@ -17,8 +17,8 @@ export class ApiError extends Error {
 }
 
 async function getAuthHeader() {
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token ? `Bearer ${data.session.access_token}` : null;
+  const token = await resolveAccessToken();
+  return token ? `Bearer ${token}` : null;
 }
 
 type RequestOptions = RequestInit & {

@@ -82,17 +82,13 @@ export function parseListingUpdatePayload(form: Parameters<typeof parseListingCr
 export function parseCreateUserPayload(input: {
   nom: string;
   email: string;
-  telephone: string;
-  password: string;
   role: string;
 }) {
   const cleaned = sanitizeCreateUserFields(input);
   return createUserSchema.safeParse({
     nom: cleaned.nom,
     email: cleaned.email,
-    password: cleaned.password,
     role: cleaned.role,
-    ...(cleaned.telephone ? { telephone: cleaned.telephone } : {}),
   });
 }
 

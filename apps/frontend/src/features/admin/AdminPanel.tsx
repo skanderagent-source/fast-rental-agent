@@ -14,7 +14,6 @@ import { formatZodIssues, parseCreateUserPayload } from '../../lib/formValidatio
 import { useSubmitLock, OfflineError } from '../../lib/useSubmitLock';
 import { useToast } from '../../components/common/ToastProvider';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
-import { PasswordInput } from '../../components/common/PasswordInput';
 import { SanitizedInput } from '../../components/common/SanitizedField';
 import { useAuth } from '../../app/providers/AuthProvider';
 
@@ -23,7 +22,7 @@ import type { z } from 'zod';
 
 type AdminUser = z.infer<typeof adminUserSchema>;
 
-const USERNAME_HINT = `Lettres et chiffres seulement (a-z, 0-9), ${REFERRAL_USERNAME_MIN_LENGTH}–${REFERRAL_USERNAME_MAX_LENGTH} caractères.`;
+const USERNAME_HINT = `Lettres seulement (a-z), ${REFERRAL_USERNAME_MIN_LENGTH}–${REFERRAL_USERNAME_MAX_LENGTH} caractères.`;
 
 export function AdminPanel() {
   const toast = useToast();
@@ -60,7 +59,7 @@ export function AdminPanel() {
     queryFn: () => api.get<Array<Record<string, unknown>>>('/api/admin/sheets/runs'),
   });
 
-  const [newUser, setNewUser] = useState({ nom: '', email: '', telephone: '', password: '', role: 'agent' });
+  const [newUser, setNewUser] = useState({ nom: '', email: '', role: 'agent' });
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
   const [suspendTarget, setSuspendTarget] = useState<AdminUser | null>(null);
@@ -116,7 +115,7 @@ export function AdminPanel() {
   }
 
   function sanitizeUsernameInput(value: string) {
-    return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return value.toLowerCase().replace(/[^a-z]/g, '');
   }
 
   function requestUsernameChange() {
@@ -126,7 +125,7 @@ export function AdminPanel() {
     const confirm = normalizeReferralUsername(confirmUsername);
 
     if (!isValidReferralUsername(next)) {
-      toast(`❌ Nom d'utilisateur invalide (${REFERRAL_USERNAME_MIN_LENGTH}–${REFERRAL_USERNAME_MAX_LENGTH} caractères, a-z et 0-9)`);
+      toast(`❌ Nom d'utilisateur invalide (${REFERRAL_USERNAME_MIN_LENGTH}–${REFERRAL_USERNAME_MAX_LENGTH} lettres a-z)`);
       return;
     }
     if (next !== confirm) {
@@ -192,7 +191,10 @@ export function AdminPanel() {
       </section>
 
       <section className="profile-card">
-        <h2 className="profile-card__title">Créer un compte</h2>
+        <h2 className="profile-card__title">Inviter un agent</h2>
+        <p className="profile-card__hint">
+          Seules les personnes invitées peuvent créer un mot de passe. Aucune inscription publique.
+        </p>
         <div className="admin-form-grid">
           <div className="form-field">
             <label htmlFor="new-user-nom">Nom</label>
@@ -217,26 +219,6 @@ export function AdminPanel() {
             />
           </div>
           <div className="form-field">
-            <label htmlFor="new-user-telephone">Téléphone</label>
-            <SanitizedInput
-              id="new-user-telephone"
-              kind="phone"
-              maxLength={30}
-              placeholder="5145550100"
-              value={newUser.telephone}
-              onChange={(value) => setNewUser({ ...newUser, telephone: value })}
-            />
-          </div>
-          <div className="form-field">
-            <label htmlFor="new-user-password">Mot de passe temporaire</label>
-            <PasswordInput
-              id="new-user-password"
-              value={newUser.password}
-              onChange={(value) => setNewUser({ ...newUser, password: value })}
-              autoComplete="new-password"
-            />
-          </div>
-          <div className="form-field">
             <label htmlFor="new-user-role">Rôle</label>
             <select id="new-user-role" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
               <option value="agent">Agent</option>
@@ -256,8 +238,8 @@ export function AdminPanel() {
                     return;
                   }
                   await api.post('/api/users', parsed.data);
-                  toast('✅ Compte créé');
-                  setNewUser({ nom: '', email: '', telephone: '', password: '', role: 'agent' });
+                  toast('✅ Invitation envoyée');
+                  setNewUser({ nom: '', email: '', role: 'agent' });
                   void refreshUsers();
                 });
               } catch (err) {
@@ -265,7 +247,7 @@ export function AdminPanel() {
               }
             })()}
           >
-            {creatingUser ? 'Création…' : 'Créer le compte'}
+            {creatingUser ? 'Envoi…' : 'Envoyer l’invitation'}
           </button>
         </div>
       </section>

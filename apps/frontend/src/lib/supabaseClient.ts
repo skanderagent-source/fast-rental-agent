@@ -11,3 +11,27 @@ export const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_AN
     detectSessionInUrl: true,
   },
 });
+
+let cachedAccessToken: string | null = null;
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  cachedAccessToken = session?.access_token ?? null;
+});
+
+/** Prefer the in-memory token to avoid getSession() races right after sign-in. */
+export function setCachedAccessToken(token: string | null): void {
+  cachedAccessToken = token;
+}
+
+export function getCachedAccessToken(): string | null {
+  return cachedAccessToken;
+}
+
+export async function resolveAccessToken(): Promise<string | null> {
+  if (cachedAccessToken) return cachedAccessToken;
+
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token ?? null;
+  cachedAccessToken = token;
+  return token;
+}

@@ -6,6 +6,9 @@ import { useAuth } from '../../app/providers/AuthProvider';
 import { PasswordInput } from '../../components/common/PasswordInput';
 import { useSubmitLock, OfflineError } from '../../lib/useSubmitLock';
 import { validatePasswordPair } from './validation';
+import logoUrl from '../../assets/logo-display.png';
+
+const PASSWORD_HINT = 'Minimum 9 caractères, dont une majuscule et un chiffre.';
 
 export function ForcePasswordChangePage() {
   const [pw1, setPw1] = useState('');
@@ -35,30 +38,59 @@ export function ForcePasswordChangePage() {
   }
 
   return (
-    <div style={{ minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <form onSubmit={submit} style={{ width: '100%', maxWidth: 380 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, textAlign: 'center' }}>Nouveau mot de passe</h1>
-        {error && <div style={{ color: 'var(--red)', margin: '12px 0' }}>{error}</div>}
-        <PasswordInput
-          value={pw1}
-          onChange={setPw1}
-          autoComplete="new-password"
-          placeholder="Nouveau mot de passe"
-          disabled={locked}
-        />
-        <div style={{ marginTop: 12 }}>
-          <PasswordInput
-            value={pw2}
-            onChange={setPw2}
-            autoComplete="new-password"
-            placeholder="Confirmer"
-            disabled={locked}
-          />
-        </div>
-        <button className="btn-add" type="submit" disabled={locked} style={{ marginTop: 12 }}>
-          {locked ? 'Enregistrement…' : 'Enregistrer'}
-        </button>
-      </form>
+    <div className="login-page">
+      <div className="login-page__glow login-page__glow--left" aria-hidden />
+      <div className="login-page__glow login-page__glow--right" aria-hidden />
+
+      <div className="login-card">
+        <header className="login-card__header">
+          <div className="login-card__logo-wrap">
+            <img src={logoUrl} alt="LogiGo" className="login-card__logo" />
+          </div>
+          <h1 className="login-card__title">Nouveau mot de passe</h1>
+          <p className="login-card__subtitle">Tu dois définir un nouveau mot de passe pour continuer</p>
+        </header>
+
+        {error && (
+          <div className="login-alert login-alert--error" role="alert">
+            {error}
+          </div>
+        )}
+
+        <form className="login-form" onSubmit={submit}>
+          <p className="login-hint">{PASSWORD_HINT}</p>
+
+          <div className="login-field">
+            <label htmlFor="force-password">Nouveau mot de passe</label>
+            <PasswordInput
+              id="force-password"
+              value={pw1}
+              onChange={setPw1}
+              autoComplete="new-password"
+              placeholder="Nouveau mot de passe"
+              disabled={locked}
+            />
+          </div>
+
+          <div className="login-field">
+            <label htmlFor="force-password-confirm">Confirmer</label>
+            <PasswordInput
+              id="force-password-confirm"
+              value={pw2}
+              onChange={setPw2}
+              autoComplete="new-password"
+              placeholder="Confirmer le mot de passe"
+              disabled={locked}
+            />
+          </div>
+
+          <button className="login-submit" type="submit" disabled={locked}>
+            {locked ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </form>
+      </div>
+
+      <p className="login-footer">Réservé aux agents autorisés</p>
     </div>
   );
 }

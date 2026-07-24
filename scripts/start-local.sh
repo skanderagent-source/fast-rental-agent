@@ -131,13 +131,13 @@ else
 fi
 
 # ── 6. Start servers ─────────────────────────────────────────────────────────
-step "6/8" "Syncing logos from shared/logo"
+step "6/7" "Syncing logos from shared/logo"
 if ! bash scripts/with-node.sh node scripts/sync-logos.mjs; then
-  warn "6/8 sync-logos" \
+  warn "6/7 sync-logos" \
     "Logo sync failed.\nDebug:\n  - Ensure shared/logo/logo-logigo.ico exists\n  - For login logo crop: python3 + Pillow (pip install Pillow)"
 fi
 
-step "7/8" "Starting dev servers"
+step "7/7" "Starting dev servers"
 echo "  Backend  → http://localhost:4000"
 echo "  Frontend → http://localhost:5173"
 echo "  (Union Rental is separate — :4001 API, :5174 web; not started by this script)"
@@ -150,28 +150,12 @@ FRONTEND_PID=$!
 
 sleep 2
 if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
-  fail "6/7 backend dev server" \
+  fail "7/7 backend dev server" \
     "Backend process exited immediately.\nDebug:\n  - Log: tail -50 /tmp/fast-rental-backend.log\n  - Common fixes: check apps/backend/.env, port 4000 in use (lsof -i :4000)\n  - Manual: npm run dev:backend"
 fi
 if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
-  fail "6/7 frontend dev server" \
+  fail "7/7 frontend dev server" \
     "Frontend process exited immediately.\nDebug:\n  - Log: tail -50 /tmp/fast-rental-frontend.log\n  - Common fixes: port 5173 in use (lsof -i :5173)\n  - Union Rental uses :5174 — start it from the Union Rental repo, not here\n  - Manual: npm run dev:frontend"
-fi
-
-# ── 7. Health check ──────────────────────────────────────────────────────────
-step "8/8" "Backend health check"
-HEALTH_OK=0
-for i in 1 2 3 4 5 6 7 8 9 10; do
-  if curl -sf http://localhost:4000/health | grep -q '"ok":true'; then
-    HEALTH_OK=1
-    break
-  fi
-  sleep 1
-done
-
-if [[ "$HEALTH_OK" -eq 0 ]]; then
-  fail "7/7 health check" \
-    "Backend is running but /health did not return ok within 10s.\nDebug:\n  - Log: tail -50 /tmp/fast-rental-backend.log\n  - Try: curl -v http://localhost:4000/health\n  - Check invalid env in apps/backend/.env (Supabase keys, etc.)"
 fi
 
 echo ""
@@ -181,7 +165,6 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "  Login:    http://localhost:5173/agent-login"
 echo "  API:      http://localhost:4000"
-echo "  Health:   curl http://localhost:4000/health"
 echo ""
 echo "  Logs:"
 echo "    tail -f /tmp/fast-rental-backend.log"

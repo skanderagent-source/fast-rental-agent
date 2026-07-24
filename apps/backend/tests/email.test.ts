@@ -16,6 +16,7 @@ vi.mock('../src/config/env.js', () => ({
     RESEND_API_KEY: 're_test',
     FRONTEND_ORIGIN: 'http://localhost:5173',
   },
+  primaryFrontendOrigin: () => 'http://localhost:5173',
 }));
 
 import { logger } from '../src/config/logger.js';

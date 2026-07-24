@@ -7,6 +7,7 @@ export type FieldKind =
   | 'plain'
   | 'address'
   | 'personName'
+  | 'username'
   | 'multiline'
   | 'phone'
   | 'email'
@@ -34,11 +35,15 @@ export function sanitizeFieldInput(value: string, kind: FieldKind, maxLength: nu
     case 'personName':
       next = next.replace(/[^\p{L}\p{M}\s'.-]/gu, '');
       break;
+    case 'username':
+      next = next.toLowerCase().replace(/[^a-z]/g, '');
+      break;
     case 'multiline':
       next = next.replace(ANGLE_BRACKETS, '').replace(BACKTICK, '');
       break;
     case 'phone':
-      next = next.replace(/[^\d+().\-\s]/g, '');
+      // Digits only — no spaces or punctuation (matches API storage format).
+      next = next.replace(/\D/g, '');
       break;
     case 'email':
       next = next.toLowerCase().replace(/[^\w.!#$%&'*+/=?^`{|}~@\-]/g, '');
@@ -71,7 +76,7 @@ export function sanitizeFieldInput(value: string, kind: FieldKind, maxLength: nu
 }
 
 export function normalizePhoneForApi(value: string): string {
-  return sanitizeFieldInput(value, 'phone', 30).replace(/\D/g, '').slice(0, 15);
+  return sanitizeFieldInput(value, 'phone', 30).slice(0, 15);
 }
 
 export function sanitizeListingFormFields(form: {
@@ -105,15 +110,11 @@ export function sanitizeListingFormFields(form: {
 export function sanitizeCreateUserFields(input: {
   nom: string;
   email: string;
-  telephone: string;
-  password: string;
   role: string;
 }) {
   return {
     nom: sanitizeFieldInput(input.nom, 'personName', 120).trim(),
     email: sanitizeFieldInput(input.email, 'email', 320).trim(),
-    telephone: input.telephone.trim() ? normalizePhoneForApi(input.telephone) : '',
-    password: input.password,
     role: input.role,
   };
 }
@@ -132,7 +133,7 @@ export function fieldInputAttributes(kind: FieldKind): {
 } {
   switch (kind) {
     case 'phone':
-      return { type: 'tel', inputMode: 'tel', pattern: '[0-9+().\\-\\s]*', autoComplete: 'tel' };
+      return { type: 'tel', inputMode: 'numeric', pattern: '[0-9]*', autoComplete: 'tel' };
     case 'email':
       return { type: 'email', inputMode: 'email', autoComplete: 'email' };
     case 'money':
@@ -145,6 +146,8 @@ export function fieldInputAttributes(kind: FieldKind): {
       return { type: 'search', inputMode: 'search' };
     case 'personName':
       return { type: 'text', inputMode: 'text', autoComplete: 'name' };
+    case 'username':
+      return { type: 'text', inputMode: 'text', pattern: '[a-z]*', autoComplete: 'username' };
     case 'accessCode':
       return { type: 'text', inputMode: 'text', pattern: '[a-zA-Z0-9#*\\-]*' };
     case 'dateText':

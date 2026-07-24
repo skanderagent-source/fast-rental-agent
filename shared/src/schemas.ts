@@ -22,7 +22,7 @@ export const passwordSchema = z
   .string()
   .min(PASSWORD_MIN_LENGTH, `Minimum ${PASSWORD_MIN_LENGTH} caractères`)
   .max(128, 'Maximum 128 caractères')
-  .regex(/[A-Za-z]/, 'Le mot de passe doit contenir au moins une lettre')
+  .regex(/[A-Z]/, 'Le mot de passe doit contenir au moins une majuscule')
   .regex(/[0-9]/, 'Le mot de passe doit contenir au moins un chiffre');
 
 export const createListingSchema = z.object({
@@ -57,8 +57,6 @@ export const createCommentSchema = z.object({
 export const createUserSchema = z.object({
   nom: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(320),
-  telephone: z.union([z.string().trim().min(6).max(30), z.literal('')]).optional(),
-  password: passwordSchema,
   role: z.enum(USER_ROLES),
 }).strict();
 
@@ -75,7 +73,7 @@ export const updateUserReferralSlugSchema = z.object({
     .toLowerCase()
     .min(REFERRAL_USERNAME_MIN_LENGTH, `Min. ${REFERRAL_USERNAME_MIN_LENGTH} caractères`)
     .max(REFERRAL_USERNAME_MAX_LENGTH, `Max. ${REFERRAL_USERNAME_MAX_LENGTH} caractères`)
-    .regex(REFERRAL_USERNAME_PATTERN, 'Lettres et chiffres seulement (a-z, 0-9)'),
+    .regex(REFERRAL_USERNAME_PATTERN, 'Lettres seulement (a-z)'),
 }).strict();
 
 const targetedSensitiveActions = new Set([

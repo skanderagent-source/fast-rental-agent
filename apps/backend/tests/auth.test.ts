@@ -3,14 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockGetUser = vi.fn();
 const mockFrom = vi.fn();
-const mockCreateUser = vi.fn();
+const mockInviteUserByEmail = vi.fn();
 
 vi.mock('../src/db/supabaseAdmin.js', () => ({
   supabaseAdmin: {
     auth: {
       getUser: (...args: unknown[]) => mockGetUser(...args),
       admin: {
-        createUser: (...args: unknown[]) => mockCreateUser(...args),
+        inviteUserByEmail: (...args: unknown[]) => mockInviteUserByEmail(...args),
+        updateUserById: vi.fn().mockResolvedValue({ data: { user: {} }, error: null }),
         deleteUser: vi.fn(),
         listUsers: vi.fn(),
       },
@@ -75,7 +76,7 @@ describe('admin routes', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('rejects user creation without auth', async () => {
-    const res = await request(app).post('/api/users').send({ nom: 'Test', email: 'test@example.com', password: 'Secret12345', role: 'agent' });
+    const res = await request(app).post('/api/users').send({ nom: 'Test', email: 'test@example.com', role: 'agent' });
     expect(res.status).toBe(401);
   });
 
@@ -108,7 +109,7 @@ describe('admin routes', () => {
       data: { user: { id: 'admin-1', email: 'admin@test.com' } },
       error: null,
     });
-    mockCreateUser.mockResolvedValue({ data: { user: { id: 'new-user' } }, error: null });
+    mockInviteUserByEmail.mockResolvedValue({ data: { user: { id: 'new-user' } }, error: null });
     let agentQuery = 0;
     mockFrom.mockImplementation((table: string) => {
       if (table === 'agents') {
@@ -132,9 +133,15 @@ describe('admin routes', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', 'Bearer fake-token')
-      .send({ nom: 'New Agent', email: 'newagent@test.com', password: 'Secret12345', role: 'agent' });
+      .send({ nom: 'New Agent', email: 'newagent@test.com', role: 'agent' });
     expect(res.status).toBe(200);
     expect(res.body.data.email).toBe('newagent@test.com');
+    expect(mockInviteUserByEmail).toHaveBeenCalledWith(
+      'newagent@test.com',
+      expect.objectContaining({
+        redirectTo: expect.stringContaining('/auth/accept-invite'),
+      }),
+    );
   });
 
   it('rejects agent creating user', async () => {
@@ -142,7 +149,7 @@ describe('admin routes', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', 'Bearer fake-token')
-      .send({ nom: 'Test', email: 'test@example.com', password: 'Secret12345', role: 'agent' });
+      .send({ nom: 'Test', email: 'test@example.com', role: 'agent' });
     expect(res.status).toBe(403);
   });
 });

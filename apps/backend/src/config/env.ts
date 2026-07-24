@@ -200,3 +200,12 @@ export const env = {
   STORAGE_DRIVER: resolveStorageDriver(parsed.data),
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: parsed.data.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, '\n'),
 };
+
+/** First configured frontend origin (no hardcoded localhost fallback). */
+export function primaryFrontendOrigin(): string {
+  const origin = env.FRONTEND_ORIGIN.split(',').map((value) => value.trim()).find(Boolean);
+  if (!origin) {
+    throw new Error('FRONTEND_ORIGIN must contain at least one origin');
+  }
+  return origin;
+}

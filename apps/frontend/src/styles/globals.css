@@ -461,6 +461,7 @@
 }
 
 .login-forgot {
+  display: block;
   margin-top: 18px;
   background: none;
   border: none;
@@ -472,6 +473,8 @@
   padding: 8px;
   border-radius: var(--radius-sm);
   transition: background 0.15s;
+  text-align: center;
+  text-decoration: none;
 }
 .login-forgot:hover:not(:disabled) {
   background: rgba(10, 132, 255, 0.1);
@@ -479,6 +482,65 @@
 .login-forgot:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.login-back {
+  display: block;
+  margin-top: 18px;
+  color: var(--blue);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  text-decoration: none;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+.login-back:hover {
+  background: rgba(10, 132, 255, 0.1);
+}
+
+.login-hint {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text2);
+}
+
+.login-field .password-input {
+  width: 100%;
+  align-items: stretch;
+}
+
+.login-field .password-input input {
+  width: 100%;
+  min-height: 48px;
+  padding: 13px 14px;
+  font-size: 16px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  background: var(--bg3);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.login-field .password-input input::placeholder {
+  color: var(--text3);
+}
+
+.login-field .password-input input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
+}
+
+.login-field .password-input input:disabled {
+  opacity: 0.6;
+}
+
+.login-field .password-input__toggle {
+  align-self: stretch;
+  min-height: 48px;
 }
 
 .login-footer {
@@ -595,6 +657,16 @@
   letter-spacing: 0.06em;
   color: var(--text3);
   margin-bottom: 14px;
+}
+
+.profile-card__hint {
+  margin: -6px 0 14px;
+  color: var(--text3);
+  font-size: 13px;
+  line-height: 1.45;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
 }
 
 .profile-name-row {

@@ -211,7 +211,7 @@ export function UserDashboard() {
         toast('❌ Laisse le champ numéro actuel vide');
         return;
       }
-      await api.patch('/api/me', { telephone: next });
+      await api.patch('/api/me', { telephone: phoneParsed.data.telephone });
       await refreshProfile();
       toast('✅ Téléphone mis à jour');
       closeSection('phone');

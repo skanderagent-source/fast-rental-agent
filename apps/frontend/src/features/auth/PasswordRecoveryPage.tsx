@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { PasswordInput } from '../../components/common/PasswordInput';
+import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { useSubmitLock, OfflineError } from '../../lib/useSubmitLock';
-import { hasRecoveryAuthenticator } from './authApi';
+import { consumeRecoveryLinkIntent, waitForRecoverySession } from './authApi';
 import { validatePasswordPair } from './validation';
+import logoUrl from '../../assets/logo-display.png';
+
+const PASSWORD_HINT = 'Minimum 9 caractères, dont une majuscule et un chiffre.';
 
 export function PasswordRecoveryPage() {
   const [pw1, setPw1] = useState('');
@@ -15,7 +19,15 @@ export function PasswordRecoveryPage() {
   const { locked, run } = useSubmitLock({ requireOnline: true });
 
   useEffect(() => {
-    void hasRecoveryAuthenticator().then(setRecoveryAuthorized);
+    let mounted = true;
+    void waitForRecoverySession().then((authorized) => {
+      if (!mounted) return;
+      if (authorized) consumeRecoveryLinkIntent();
+      setRecoveryAuthorized(authorized);
+    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   async function submit(e: React.FormEvent) {
@@ -36,38 +48,80 @@ export function PasswordRecoveryPage() {
   }
 
   return (
-    <div style={{ minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <form onSubmit={submit} style={{ width: '100%', maxWidth: 380 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, textAlign: 'center' }}>Réinitialiser le mot de passe</h1>
-        {error && <div style={{ color: 'var(--red)', margin: '12px 0' }}>{error}</div>}
-        {recoveryAuthorized === false && (
-          <div style={{ color: 'var(--red)', margin: '12px 0' }}>Lien de récupération invalide ou expiré.</div>
+    <div className="login-page">
+      <div className="login-page__glow login-page__glow--left" aria-hidden />
+      <div className="login-page__glow login-page__glow--right" aria-hidden />
+
+      <div className="login-card">
+        <header className="login-card__header">
+          <div className="login-card__logo-wrap">
+            <img src={logoUrl} alt="LogiGo" className="login-card__logo" />
+          </div>
+          <h1 className="login-card__title">Réinitialiser le mot de passe</h1>
+          <p className="login-card__subtitle">Choisis un nouveau mot de passe pour ton compte</p>
+        </header>
+
+        {recoveryAuthorized === null && (
+          <LoadingSpinner label="Validation du lien…" />
         )}
-        <PasswordInput
-          value={pw1}
-          onChange={setPw1}
-          autoComplete="new-password"
-          placeholder="Nouveau mot de passe"
-          disabled={locked || recoveryAuthorized !== true}
-        />
-        <div style={{ marginTop: 12 }}>
-          <PasswordInput
-            value={pw2}
-            onChange={setPw2}
-            autoComplete="new-password"
-            placeholder="Confirmer"
-            disabled={locked || recoveryAuthorized !== true}
-          />
-        </div>
-        <button
-          className="btn-add"
-          type="submit"
-          disabled={locked || recoveryAuthorized !== true}
-          style={{ marginTop: 12 }}
-        >
-          {locked ? 'Enregistrement…' : 'Enregistrer'}
-        </button>
-      </form>
+
+        {error && (
+          <div className="login-alert login-alert--error" role="alert">
+            {error}
+          </div>
+        )}
+        {recoveryAuthorized === false && (
+          <div className="login-alert login-alert--error" role="alert">
+            Lien de récupération invalide ou expiré.
+          </div>
+        )}
+
+        {recoveryAuthorized === true && (
+          <form className="login-form" onSubmit={submit}>
+            <p className="login-hint">{PASSWORD_HINT}</p>
+
+            <div className="login-field">
+              <label htmlFor="recovery-password">Nouveau mot de passe</label>
+              <PasswordInput
+                id="recovery-password"
+                value={pw1}
+                onChange={setPw1}
+                autoComplete="new-password"
+                placeholder="Nouveau mot de passe"
+                disabled={locked}
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="recovery-password-confirm">Confirmer</label>
+              <PasswordInput
+                id="recovery-password-confirm"
+                value={pw2}
+                onChange={setPw2}
+                autoComplete="new-password"
+                placeholder="Confirmer le mot de passe"
+                disabled={locked}
+              />
+            </div>
+
+            <button className="login-submit" type="submit" disabled={locked}>
+              {locked ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+
+            <Link className="login-back" to="/agent-login">
+              Retour à la connexion
+            </Link>
+          </form>
+        )}
+
+        {recoveryAuthorized === false && (
+          <Link className="login-back" to="/auth/forgot-password">
+            Demander un nouveau lien
+          </Link>
+        )}
+      </div>
+
+      <p className="login-footer">Réservé aux agents autorisés</p>
     </div>
   );
 }

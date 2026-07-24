@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { api } from '../../lib/apiClient';
 import { agentProfileSchema } from '@fast-rental/shared';
@@ -7,6 +7,12 @@ import { parseApi } from '../../lib/parseApi';
 import { clearClientSession } from '../../lib/authSession';
 import { queryClient } from './QueryProvider';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
+import { rememberInviteLinkIntent, rememberRecoveryLinkIntent } from '../../features/auth/authApi';
+import {
+  authCallbackErrorRedirect,
+  consumeAuthCallbackError,
+  takeStashedAuthCallbackError,
+} from '../../lib/authCallbackUrl';
 
 export type Profile = {
   id: string;
@@ -53,7 +59,11 @@ function clearAuthState(
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const location = useLocation();
   const navigate = useNavigate();
+  const isPasswordRecoveryRoute = location.pathname === '/auth/reset-password';
+  const isAcceptInviteRoute = location.pathname === '/auth/accept-invite';
+  const isAuthCallbackRoute = isPasswordRecoveryRoute || isAcceptInviteRoute;
   const activeUserIdRef = useRef<string | null>(null);
   const refreshInFlightRef = useRef<Promise<Profile> | null>(null);
 
@@ -81,12 +91,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [navigate]);
 
   useEffect(() => {
+    const authError = takeStashedAuthCallbackError() ?? consumeAuthCallbackError();
+    if (authError) {
+      setLoading(false);
+      navigate(authCallbackErrorRedirect(authError.code), { replace: true });
+      return;
+    }
+
+    rememberInviteLinkIntent();
+    rememberRecoveryLinkIntent();
+    const hashType = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type');
+    const searchType = new URLSearchParams(window.location.search).get('type');
+    const linkType = hashType ?? searchType;
+    if (linkType === 'invite' && location.pathname !== '/auth/accept-invite') {
+      window.location.replace(`/auth/accept-invite${window.location.hash}${window.location.search}`);
+      return;
+    }
+    if (linkType === 'recovery' && location.pathname !== '/auth/reset-password') {
+      window.location.replace(`/auth/reset-password${window.location.hash}${window.location.search}`);
+    }
+  }, [location.pathname, navigate]);
+
+  useEffect(() => {
     let mounted = true;
     async function load() {
       try {
         const { data } = await supabase.auth.getSession();
         if (!data.session) {
           if (mounted) clearAuthState(activeUserIdRef, setProfile);
+          return;
+        }
+        if (isAuthCallbackRoute) {
           return;
         }
         const me = await api.get<{ profile: unknown }>('/api/me', { skipSessionAbort: true });
@@ -99,7 +134,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         if (mounted) {
           clearAuthState(activeUserIdRef, setProfile);
-          if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 401) {
+          if (
+            !isAuthCallbackRoute
+            && err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 401
+          ) {
             await supabase.auth.signOut();
             navigate('/agent-login?expired=1', { replace: true });
           }
@@ -110,25 +148,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     void load();
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'INITIAL_SESSION') return;
+      if (event === 'INITIAL_SESSION') {
+        if (!session) {
+          clearAuthState(activeUserIdRef, setProfile);
+          setLoading(false);
+        }
+        return;
+      }
       if (!session) {
         clearAuthState(activeUserIdRef, setProfile);
         setLoading(false);
         return;
       }
+      if (isAuthCallbackRoute) {
+        setLoading(false);
+        return;
+      }
       setTimeout(() => {
-        void refreshProfile()
-          .catch(() => {
-            clearAuthState(activeUserIdRef, setProfile);
-          })
-          .finally(() => setLoading(false));
+        void refreshProfile().finally(() => setLoading(false));
       }, 0);
     });
     return () => {
       mounted = false;
       sub.subscription.unsubscribe();
     };
-  }, [navigate, refreshProfile]);
+  }, [navigate, refreshProfile, isAuthCallbackRoute]);
 
   const value = useMemo(
     () => ({

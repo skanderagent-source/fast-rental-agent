@@ -43,22 +43,22 @@ export const MAX_RENTALS_LIST = 500;
 export const LISTING_SIZE_VALUES = ['2.5', '3.5', '4.5', '5.5', '6.5', '7.5'] as const;
 export const LISTING_FILTER_SOURCES = ['Fast Rental', 'Orcha', 'manual', 'fast_rental', 'orcha', 'sheet'] as const;
 
-export const PASSWORD_MIN_LENGTH = 10;
+export const PASSWORD_MIN_LENGTH = 9;
 
 export const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const VIDEO_MIME_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'] as const;
 
 export const REFERRAL_USERNAME_MIN_LENGTH = 3;
 export const REFERRAL_USERNAME_MAX_LENGTH = 32;
-export const REFERRAL_USERNAME_PATTERN = /^[a-z0-9]+$/;
+export const REFERRAL_USERNAME_PATTERN = /^[a-z]+$/;
 
 export function normalizeReferralUsername(value: string): string {
   return value.trim().toLowerCase();
 }
 
-/** Strip dots and other symbols — used when deriving a default from email. */
+/** Strip digits, spaces, and symbols — usernames are letters only. */
 export function sanitizeReferralUsername(value: string): string {
-  return normalizeReferralUsername(value).replace(/[^a-z0-9]/g, '');
+  return normalizeReferralUsername(value).replace(/[^a-z]/g, '');
 }
 
 export function isValidReferralUsername(value: string): boolean {
@@ -83,6 +83,29 @@ export function referralSlugFromEmail(email: string): string {
 export function referralUsernameFromNom(nom: string | null | undefined): string | null {
   const username = sanitizeReferralUsername(nom ?? '');
   return isValidReferralUsername(username) ? username : null;
+}
+
+/** Digits only (app storage format for agent phone numbers). */
+export function normalizePhoneDigits(value: string | null | undefined): string {
+  return String(value ?? '').replace(/\D/g, '');
+}
+
+/**
+ * Convert app phone digits to E.164 for Supabase Auth.
+ * 10-digit NANP numbers (e.g. Montreal) become +1XXXXXXXXXX.
+ */
+export function toE164Phone(value: string | null | undefined): string | null {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('+')) {
+    const international = normalizePhoneDigits(trimmed);
+    return international ? `+${international}` : null;
+  }
+  const digits = normalizePhoneDigits(trimmed);
+  if (!digits) return null;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return `+${digits}`;
 }
 
 /** Join site origin + path without duplicate slashes when base URL ends with `/`. */
