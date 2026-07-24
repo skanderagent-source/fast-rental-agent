@@ -242,15 +242,19 @@ export function UserDashboard() {
         toast('❌ Confirme ton mot de passe');
         return;
       }
-      const { error } = await supabase.auth.updateUser({
-        email: emailParsed.data,
-        current_password: emailPassword,
-      });
-      if (error) toast('❌ Impossible de mettre à jour l\'email');
-      else {
+      try {
+        await api.patch('/api/me/email', {
+          email: emailParsed.data,
+          currentPassword: emailPassword,
+        });
         await supabase.auth.refreshSession();
-        toast('✅ Vérifie ta boîte mail pour confirmer');
+        await refreshProfile();
+        toast('✅ Email mis à jour');
         closeSection('email');
+      } catch (err) {
+        if (err instanceof OfflineError) throw err;
+        const message = err instanceof ApiError ? err.message : 'Impossible de mettre à jour l\'email';
+        toast(`❌ ${message}`);
       }
       });
     } catch (err) {

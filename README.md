@@ -1,6 +1,6 @@
-# Fast Rental — LogiGo Agent Full Stack
+# Fast Rental — Logigo Agent Full Stack
 
-Monorepo for the LogiGo Agent portal (Fast Rental).
+Monorepo for the Logigo Agent portal (Fast Rental).
 
 ## Structure
 

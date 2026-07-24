@@ -23,7 +23,7 @@ export default function handler() {
 
   if (missing.length) {
     const message =
-      '[LogiGo] Missing Vercel env: '
+      '[Logigo] Missing Vercel env: '
       + missing.join(', ')
       + '. Set them in Project Settings > Environment Variables (Production + Preview).';
     return new Response(

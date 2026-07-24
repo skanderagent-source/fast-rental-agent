@@ -95,10 +95,94 @@ export function accountCreated(input: { nom: string; email: string }): EmailCont
   return { subject, html, text };
 }
 
+function securityNotificationEmail(input: {
+  title: string;
+  subject: string;
+  body: string;
+  warning: string;
+}): EmailContent {
+  const subject = safeEmailHeader(input.subject);
+  const title = escapeHtml(input.title);
+  const body = escapeHtml(input.body);
+  const warning = escapeHtml(input.warning);
+  const text = [input.title, input.body, input.warning, 'Si c’était bien toi, aucune action n’est requise.'].join('\n\n');
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
+  <title>${title}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#111111;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#111111;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:400px;background-color:#1c1c1e;border:1px solid #3a3a3c;border-radius:20px;">
+          <tr>
+            <td align="center" style="padding:36px 32px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <img
+                src="https://www.logigo-agent.ca/icon-192.png"
+                width="52"
+                height="52"
+                alt="Logigo"
+                style="display:block;border:0;border-radius:12px;margin:0 auto 20px;"
+              >
+              <h1 style="margin:0 0 8px;font-size:26px;font-weight:800;line-height:1.2;letter-spacing:-0.02em;color:#f2f2f7;">
+                ${title}
+              </h1>
+              <p style="margin:0 0 24px;font-size:14px;font-weight:500;line-height:1.45;color:#aeaeb2;">
+                ${body}
+              </p>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;">
+                <tr>
+                  <td style="padding:14px 16px;background-color:#3d2e00;border:1px solid rgba(255,214,10,0.25);border-radius:8px;text-align:left;">
+                    <p style="margin:0;font-size:13px;line-height:1.45;color:#ffd60a;">
+                      ${warning}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0;font-size:12px;line-height:1.45;color:#6e6e73;">
+                Si c’était bien toi, aucune action n’est requise. Réservé aux agents autorisés.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+  return { subject, html, text };
+}
+
+export function phoneChanged(input: { phone?: string | null }): EmailContent {
+  const phoneLine = input.phone?.trim()
+    ? ` Nouveau numéro : ${input.phone.trim()}.`
+    : '';
+  return securityNotificationEmail({
+    title: 'Numéro de téléphone modifié',
+    subject: 'Ton numéro Logigo a été modifié',
+    body: `Le numéro de téléphone de ton compte Logigo Agent vient d’être changé.${phoneLine}`,
+    warning: 'Si tu n’as pas fait ce changement, contacte un administrateur tout de suite.',
+  });
+}
+
+export function emailChanged(input: { oldEmail: string; newEmail: string }): EmailContent {
+  return securityNotificationEmail({
+    title: 'Adresse email modifiée',
+    subject: 'Ton email Logigo a été modifié',
+    body: `L’email de ton compte Logigo Agent a été changé de ${input.oldEmail} vers ${input.newEmail}.`,
+    warning: 'Si tu n’as pas fait ce changement, réinitialise ton mot de passe tout de suite et contacte un administrateur.',
+  });
+}
+
 export function testEmail(): EmailContent {
   return {
-    subject: safeEmailHeader('Test LogiGo'),
-    html: '<p>Email de test LogiGo Agent.</p>',
-    text: 'Email de test LogiGo Agent.',
+    subject: safeEmailHeader('Test Logigo'),
+    html: '<p>Email de test Logigo Agent.</p>',
+    text: 'Email de test Logigo Agent.',
   };
 }

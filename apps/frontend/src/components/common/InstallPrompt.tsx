@@ -97,10 +97,10 @@ export function InstallPrompt() {
   };
 
   return (
-    <aside className="install-prompt" role="dialog" aria-label="Installer LogiGo">
+    <aside className="install-prompt" role="dialog" aria-label="Installer Logigo">
       <img className="install-prompt__icon" src="/icon-192.png" alt="" />
       <div className="install-prompt__content">
-        <strong>Ajouter LogiGo à l’écran d’accueil</strong>
+        <strong>Ajouter Logigo à l’écran d’accueil</strong>
         {mode === 'android' ? (
           <span>Installez l’application pour l’ouvrir rapidement comme une app.</span>
         ) : (

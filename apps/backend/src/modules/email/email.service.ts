@@ -84,5 +84,15 @@ export const emailService = {
     input: Parameters<typeof templates.accountCreated>[0],
   ) => void sendTemplate(to, templates.accountCreated(input)),
 
+  notifyPhoneChanged: (
+    to: string,
+    input: Parameters<typeof templates.phoneChanged>[0] = {},
+  ) => void sendTemplate(to, templates.phoneChanged(input)),
+
+  notifyEmailChanged: (
+    to: string,
+    input: Parameters<typeof templates.emailChanged>[0],
+  ) => void sendTemplate(to, templates.emailChanged(input)),
+
   sendTestEmail: (to: string) => void sendTemplate(to, templates.testEmail()),
 };

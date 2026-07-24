@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "LogiGo Agent",
-  "short_name": "LogiGo",
+  "name": "Logigo Agent",
+  "short_name": "Logigo",
   "description": "Portail agent Fast Rental",
   "start_url": "/",
   "scope": "/",

@@ -30,6 +30,8 @@ describe('email templates', () => {
       templates.mediaApproved,
       templates.mediaRejected,
       templates.accountCreated,
+      templates.phoneChanged,
+      templates.emailChanged,
     ]) {
       const content = fn({
         nom: 'Jean',
@@ -38,11 +40,27 @@ describe('email templates', () => {
         email: 'a@test.com',
         originalFilename: 'a.jpg',
         listingAdresse: '123 Rue',
+        phone: '+15145551234',
+        oldEmail: 'old@test.com',
+        newEmail: 'new@test.com',
       } as never);
       expect(content.subject).toBeTruthy();
       expect(content.html).toBeTruthy();
       expect(content.text).toBeTruthy();
     }
+  });
+
+  it('phone and email changed notices use LogiGo branding copy', () => {
+    const phone = templates.phoneChanged({ phone: '+15145551234' });
+    expect(phone.subject).toMatch(/numéro/i);
+    expect(phone.html).toContain('Numéro de téléphone modifié');
+    expect(phone.html).toContain('logigo-agent.ca/icon-192.png');
+
+    const email = templates.emailChanged({ oldEmail: 'a@test.com', newEmail: 'b@test.com' });
+    expect(email.subject).toMatch(/email/i);
+    expect(email.html).toContain('Adresse email modifiée');
+    expect(email.text).toContain('a@test.com');
+    expect(email.text).toContain('b@test.com');
   });
 
   it('account created email contains login URL not password', () => {

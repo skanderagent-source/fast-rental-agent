@@ -75,9 +75,9 @@ export function LoginPage() {
       <div className="login-card">
         <header className="login-card__header">
           <div className="login-card__logo-wrap">
-            <img src={logoUrl} alt="LogiGo" className="login-card__logo" />
+            <img src={logoUrl} alt="Logigo" className="login-card__logo" />
           </div>
-          <h1 className="login-card__title">LogiGo</h1>
+          <h1 className="login-card__title">Logigo</h1>
           <p className="login-card__subtitle">Portail agents</p>
         </header>
 
