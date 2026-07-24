@@ -22,7 +22,9 @@ Run locally after `npm run verify-env`, migrations, and `npm run create-initial-
 - [ ] Enregistrer une location creates rental row
 - [ ] Map shows markers; approximate quartier fallback labeled
 - [ ] Demandes: agent sees assigned leads + progress select
-- [ ] Profil: profile photo, email/password change, calls list, rentals, media statuses
+- [ ] Profil: profile photo, immediate email/password/phone change (no email-confirm link), calls list, rentals, media statuses
+- [ ] Email change sends only “Ton email Logigo a été modifié” (no confirm-new-email messages)
+- [ ] Phone change sends “Ton numéro Logigo a été modifié” (not password-changed)
 
 ## Admin
 

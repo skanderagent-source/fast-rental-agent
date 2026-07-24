@@ -13,7 +13,7 @@
 ## Cron jobs (backend)
 
 - Archive lead deletion: daily 03:00 America/Toronto
-- Sheet sync: every 6 hours
+- Sheet sync: every 30 minutes
 - Stale media cleanup: daily 03:30
 
 ## Geocoding (Nominatim)

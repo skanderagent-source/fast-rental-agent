@@ -4,6 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockGetUser = vi.fn();
 const mockFrom = vi.fn();
 const mockInviteUserByEmail = vi.fn();
+const mockUpdateUserById = vi.fn().mockResolvedValue({ data: { user: {} }, error: null });
+const mockSignInWithPassword = vi.fn().mockResolvedValue({ data: { user: {}, session: {} }, error: null });
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    auth: {
+      signInWithPassword: (...args: unknown[]) => mockSignInWithPassword(...args),
+    },
+  }),
+}));
 
 vi.mock('../src/db/supabaseAdmin.js', () => ({
   supabaseAdmin: {
@@ -11,7 +21,7 @@ vi.mock('../src/db/supabaseAdmin.js', () => ({
       getUser: (...args: unknown[]) => mockGetUser(...args),
       admin: {
         inviteUserByEmail: (...args: unknown[]) => mockInviteUserByEmail(...args),
-        updateUserById: vi.fn().mockResolvedValue({ data: { user: {} }, error: null }),
+        updateUserById: (...args: unknown[]) => mockUpdateUserById(...args),
         deleteUser: vi.fn(),
         listUsers: vi.fn(),
       },
@@ -159,5 +169,86 @@ describe('public listings', () => {
     mockFrom.mockImplementation(() => chain({ data: [], error: null, count: 0 }));
     const res = await request(app).get('/api/public/listings');
     expect([200, 500]).toContain(res.status);
+  });
+});
+
+describe('profile email change', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUpdateUserById.mockResolvedValue({ data: { user: {} }, error: null });
+    mockSignInWithPassword.mockResolvedValue({ data: { user: {}, session: {} }, error: null });
+  });
+
+  it('rejects email change without auth', async () => {
+    const res = await request(app)
+      .patch('/api/me/email')
+      .send({ email: 'new@test.com', currentPassword: 'Secret1' });
+    expect(res.status).toBe(401);
+  });
+
+  it('changes email immediately via admin API without confirmation flow', async () => {
+    const userId = '11111111-1111-4111-8111-111111111111';
+    const profileRow = {
+      id: userId,
+      email: 'new@test.com',
+      nom: 'Agent Test',
+      telephone: null,
+      role: 'agent' as const,
+      actif: true,
+      must_change_password: false,
+      referral_slug: 'agenttest',
+    };
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: userId, email: 'old@test.com' } },
+      error: null,
+    });
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'agents') return chain({ data: [], error: null });
+      const c = mockChain({ data: profileRow, error: null });
+      c.maybeSingle = vi.fn(async () => ({ data: null, error: null }));
+      c.single = vi.fn(async () => ({
+        data: { ...profileRow, email: 'old@test.com' },
+        error: null,
+      }));
+      c.update = vi.fn(() => {
+        const updated = mockChain({ data: profileRow, error: null });
+        updated.single = vi.fn(async () => ({ data: profileRow, error: null }));
+        return updated;
+      });
+      return c;
+    });
+
+    const res = await request(app)
+      .patch('/api/me/email')
+      .set('Authorization', 'Bearer fake-token')
+      .send({ email: 'new@test.com', currentPassword: 'Secret1' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.email).toBe('new@test.com');
+    expect(mockSignInWithPassword).toHaveBeenCalledWith({
+      email: 'old@test.com',
+      password: 'Secret1',
+    });
+    expect(mockUpdateUserById).toHaveBeenCalledWith(
+      userId,
+      expect.objectContaining({ email: 'new@test.com', email_confirm: true }),
+    );
+  });
+
+  it('rejects email change when password is wrong', async () => {
+    authAs(mockGetUser, mockFrom, { id: 'user-1', email: 'old@test.com', role: 'agent' });
+    mockSignInWithPassword.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { message: 'Invalid login credentials' },
+    });
+
+    const res = await request(app)
+      .patch('/api/me/email')
+      .set('Authorization', 'Bearer fake-token')
+      .send({ email: 'new@test.com', currentPassword: 'Wrong1' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('INVALID_PASSWORD');
+    expect(mockUpdateUserById).not.toHaveBeenCalled();
   });
 });

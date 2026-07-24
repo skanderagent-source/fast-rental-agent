@@ -4,7 +4,7 @@ Living document for production hardening. Update when new controls are added or 
 
 ## Application purpose
 
-Internal **LogiGo Agent** portal for Montreal rental agents and admins:
+Internal **Logigo Agent** portal for Montreal rental agents and admins:
 
 - Search and manage rental listings (`logements`)
 - Assign and progress client leads (`demandes_clients`)

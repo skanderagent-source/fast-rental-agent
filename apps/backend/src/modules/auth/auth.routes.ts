@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { actionTokenRequestSchema, updateProfileSchema } from '@fast-rental/shared';
+import { actionTokenRequestSchema, changeEmailSchema, updateProfileSchema } from '@fast-rental/shared';
 import { requireAuth } from '../../middleware/auth.js';
 import { validateRequest } from '../../middleware/validateRequest.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
-import { getMe, logLoginActivity, updateProfile, clearMustChangePassword } from './auth.service.js';
+import { changeEmail, getMe, logLoginActivity, updateProfile, clearMustChangePassword } from './auth.service.js';
 import { issueActionToken } from './actionTokens.service.js';
 
 const router = Router();
@@ -23,12 +23,29 @@ router.patch(
   requireAuth,
   validateRequest(updateProfileSchema),
   asyncHandler(async (req, res) => {
-    const user = res.locals.user as { id: string };
-    const profile = res.locals.profile as { nom: string };
-    const data = await updateProfile(user.id, {
-      nom: req.body.nom,
-      telephone: req.body.telephone,
-      profilePhotoMediaId: req.body.profilePhotoMediaId,
+    const user = res.locals.user as { id: string; email?: string };
+    const data = await updateProfile(
+      user.id,
+      {
+        nom: req.body.nom,
+        telephone: req.body.telephone,
+        profilePhotoMediaId: req.body.profilePhotoMediaId,
+      },
+      { notifyEmail: user.email },
+    );
+    res.json({ data });
+  }),
+);
+
+router.patch(
+  '/email',
+  requireAuth,
+  validateRequest(changeEmailSchema),
+  asyncHandler(async (req, res) => {
+    const user = res.locals.user as { id: string; email?: string };
+    const data = await changeEmail(user.id, user.email ?? '', {
+      email: req.body.email,
+      currentPassword: req.body.currentPassword,
     });
     res.json({ data });
   }),

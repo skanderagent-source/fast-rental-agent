@@ -48,6 +48,13 @@ Project ref: `twkqsaupojldddclgpqj`
 
 Configure Custom SMTP via Resend in Supabase Auth → SMTP Settings.
 
+## Profile email / phone change notifications
+
+- **Email change** is applied immediately by the backend (`PATCH /api/me/email` → Auth Admin `updateUserById` with `email_confirm: true`). Users do **not** receive Supabase “Confirm your new email” messages. The app sends a single Resend notice (“Ton email Logigo a été modifié”) to the previous address.
+- **Phone change** updates `agents.telephone` only and sends a Resend notice (“Ton numéro Logigo a été modifié”) when an existing number is replaced. Do not use Supabase Auth `phone_changed` for this — admin phone sync was removed because it could surface the wrong Auth security template.
+- In Authentication → Emails, keep **Password changed** enabled for real password updates. Leave **Email changed** / **Phone changed** Auth notifications disabled (the app owns those via Resend).
+- Secure Email Change (double confirmation) only affects client `updateUser({ email })`, which this app no longer uses for profile email updates.
+
 ## Security ownership
 
 - Supabase Auth issues, signs, expires, consumes, and revokes email verification and password recovery tokens. The application does not implement a second token format.

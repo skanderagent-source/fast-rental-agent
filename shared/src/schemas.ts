@@ -151,6 +151,11 @@ export const updateProfileSchema = z.object({
   profilePhotoMediaId: z.string().uuid().nullable().optional(),
 }).strict();
 
+export const changeEmailSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(320),
+  currentPassword: z.string().min(1).max(128),
+}).strict();
+
 export const agentProfileSchema = z.object({
   id: z.string().uuid(),
   email: z.string().trim().email().max(320),

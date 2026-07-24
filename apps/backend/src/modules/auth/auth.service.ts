@@ -1,7 +1,10 @@
-import { AGENT_PROFILE_SELECT, normalizePhoneDigits, referralUsernameFromNom, toAgentProfile, toE164Phone } from '@fast-rental/shared';
+import { createClient } from '@supabase/supabase-js';
+import { AGENT_PROFILE_SELECT, normalizePhoneDigits, referralUsernameFromNom, toAgentProfile } from '@fast-rental/shared';
+import { env } from '../../config/env.js';
 import { supabaseAdmin } from '../../db/supabaseAdmin.js';
-import { forbidden } from '../../utils/httpErrors.js';
+import { badRequest, conflict, forbidden, HttpError } from '../../utils/httpErrors.js';
 import { logActivity, shouldLogLogin } from '../activity/activity.service.js';
+import { emailService } from '../email/email.service.js';
 
 export async function getMe(userId: string, userEmail: string) {
   const { data: profile, error } = await supabaseAdmin
@@ -33,17 +36,13 @@ export async function getMe(userId: string, userEmail: string) {
   };
 }
 
-async function syncAuthPhone(userId: string, telephone: string | null) {
-  const e164 = toE164Phone(telephone);
-  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-    phone: e164 ?? '',
-    phone_confirm: true,
+async function verifyCurrentPassword(email: string, password: string) {
+  const client = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
+  const { error } = await client.auth.signInWithPassword({ email, password });
   if (error) {
-    throw Object.assign(new Error(error.message || 'Impossible de synchroniser le téléphone'), {
-      status: 400,
-      code: 'PHONE_SYNC_FAILED',
-    });
+    throw new HttpError(401, 'INVALID_PASSWORD', 'Mot de passe incorrect');
   }
 }
 
@@ -54,6 +53,7 @@ export async function updateProfile(
     telephone?: string | null;
     profilePhotoMediaId?: string | null;
   },
+  options: { notifyEmail?: string | null } = {},
 ) {
   if (input.profilePhotoMediaId !== undefined && input.profilePhotoMediaId !== null) {
     const { data: media, error: mediaError } = await supabaseAdmin
@@ -113,12 +113,64 @@ export async function updateProfile(
 
   if (input.telephone !== undefined) {
     const nextTelephone = (updates.telephone as string | null | undefined) ?? null;
-    const phoneChanged =
-      normalizePhoneDigits(previousTelephone) !== normalizePhoneDigits(nextTelephone);
-    if (phoneChanged) {
-      await syncAuthPhone(userId, nextTelephone);
+    const previousDigits = normalizePhoneDigits(previousTelephone);
+    const nextDigits = normalizePhoneDigits(nextTelephone);
+    // Notify only when replacing an existing number (not first-time set on invite).
+    if (previousDigits && previousDigits !== nextDigits) {
+      const notifyTo = options.notifyEmail?.trim() || (data as { email?: string }).email;
+      if (notifyTo) {
+        emailService.notifyPhoneChanged(notifyTo, { phone: nextTelephone });
+      }
     }
   }
+
+  return toAgentProfile(data as unknown as Record<string, unknown>);
+}
+
+export async function changeEmail(
+  userId: string,
+  currentEmail: string,
+  input: { email: string; currentPassword: string },
+) {
+  const nextEmail = input.email.trim().toLowerCase();
+  const previousEmail = currentEmail.trim().toLowerCase();
+  if (!previousEmail) {
+    throw badRequest('Email actuel introuvable', 'VALIDATION_ERROR');
+  }
+  if (nextEmail === previousEmail) {
+    throw badRequest('Le nouvel email doit être différent', 'VALIDATION_ERROR');
+  }
+
+  await verifyCurrentPassword(previousEmail, input.currentPassword);
+
+  const { data: emailConflict } = await supabaseAdmin
+    .from('agents')
+    .select('id')
+    .eq('email', nextEmail)
+    .neq('id', userId)
+    .maybeSingle();
+  if (emailConflict) {
+    throw conflict('Cet email est déjà utilisé');
+  }
+
+  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    email: nextEmail,
+    email_confirm: true,
+  });
+  if (authError) {
+    throw badRequest(authError.message || 'Impossible de mettre à jour l\'email', 'EMAIL_UPDATE_FAILED');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('agents')
+    .update({ email: nextEmail })
+    .eq('id', userId)
+    .select(AGENT_PROFILE_SELECT)
+    .single();
+  if (error || !data) throw error;
+
+  // One security notice to the previous address — no Auth confirmation emails.
+  emailService.notifyEmailChanged(previousEmail, { oldEmail: previousEmail, newEmail: nextEmail });
 
   return toAgentProfile(data as unknown as Record<string, unknown>);
 }

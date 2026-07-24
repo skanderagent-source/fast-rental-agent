@@ -32,7 +32,7 @@ export function AppShell() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <header className="header" style={{ background: 'var(--bg2)', borderBottom: '1px solid var(--border)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontSize: 17, fontWeight: 700 }}>LogiGo Agent</div>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>Logigo Agent</div>
           <div style={{ fontSize: 12, color: 'var(--text2)' }}>{profile?.nom}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

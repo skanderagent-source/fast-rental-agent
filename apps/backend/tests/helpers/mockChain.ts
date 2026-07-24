@@ -5,7 +5,7 @@ export function mockChain(resolved: { data?: unknown; error?: unknown; count?: n
   const self = () => c;
   const terminal = () => Promise.resolve(resolved);
   for (const m of [
-    'select', 'eq', 'is', 'or', 'order', 'range', 'insert', 'update', 'delete', 'upsert',
+    'select', 'eq', 'neq', 'is', 'or', 'order', 'range', 'insert', 'update', 'delete', 'upsert',
     'not', 'gt', 'gte', 'lte', 'lt', 'limit', 'single', 'maybeSingle', 'in',
   ]) {
     c[m] = vi.fn(m === 'single' || m === 'maybeSingle' ? terminal : self);

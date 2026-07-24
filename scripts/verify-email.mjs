@@ -31,7 +31,7 @@ const res = await fetch('https://api.resend.com/emails', {
   body: JSON.stringify({
     from: env.EMAIL_FROM,
     to: [to],
-    subject: 'LogiGo verify-email',
+    subject: 'Logigo verify-email',
     html: '<p>Email verification OK.</p>',
   }),
 });

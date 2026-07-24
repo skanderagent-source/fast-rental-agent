@@ -100,9 +100,9 @@ export function AcceptInvitePage() {
       <div className="login-card">
         <header className="login-card__header">
           <div className="login-card__logo-wrap">
-            <img src={logoUrl} alt="LogiGo" className="login-card__logo" />
+            <img src={logoUrl} alt="Logigo" className="login-card__logo" />
           </div>
-          <h1 className="login-card__title">Activer ton compte</h1>
+          <h1 className="login-card__title">Active ton compte</h1>
           <p className="login-card__subtitle">Complète ton profil pour finaliser ton invitation</p>
         </header>
 
@@ -163,7 +163,7 @@ export function AcceptInvitePage() {
             </div>
 
             <button className="login-submit" type="submit" disabled={locked}>
-              {locked ? 'Activation…' : 'Activer mon compte'}
+              {locked ? 'Activation…' : 'Active mon compte'}
             </button>
           </form>
         )}

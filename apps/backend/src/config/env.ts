@@ -80,7 +80,7 @@ const schema = z.object({
   GEOCODING_BASE_URL: z.string().url(),
   GEOCODING_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(15000),
   RUN_SHEET_SYNC_ON_STARTUP: boolFromEnv.default('false'),
-  CRON_SHEET_SYNC: z.string().default('0 */6 * * *'),
+  CRON_SHEET_SYNC: z.string().default('*/30 * * * *'),
   CRON_STALE_MEDIA_CLEANUP: z.string().default('30 3 * * *'),
   RATE_LIMIT_PUBLIC_WINDOW_MS: z.coerce.number().default(60000),
   RATE_LIMIT_PUBLIC_MAX: z.coerce.number().default(30),
