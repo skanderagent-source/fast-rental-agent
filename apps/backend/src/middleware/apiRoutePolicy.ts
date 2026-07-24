@@ -22,6 +22,7 @@ const route = (pattern: string, methods: HttpMethod[]): RoutePolicy => ({
  */
 const API_ROUTE_POLICIES: RoutePolicy[] = [
   route('/me', ['GET', 'PATCH']),
+  route('/me/email', ['PATCH']),
   route('/me/action-token', ['POST']),
   route('/me/activity/login', ['POST']),
   route('/me/password-updated', ['POST']),

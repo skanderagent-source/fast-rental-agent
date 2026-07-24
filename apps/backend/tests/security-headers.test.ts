@@ -69,6 +69,17 @@ describe('CORS policy', () => {
     expect(res.headers['access-control-allow-headers']).toBe('Authorization,Content-Type,X-Action-Token');
   });
 
+  it('allows CORS preflight for profile email change', async () => {
+    const res = await request(app)
+      .options('/api/me/email')
+      .set('Origin', 'http://localhost:5173')
+      .set('Access-Control-Request-Method', 'PATCH')
+      .set('Access-Control-Request-Headers', 'authorization,content-type');
+
+    expect(res.status).toBe(204);
+    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+  });
+
   it('does not grant CORS access to an unlisted origin', async () => {
     const res = await request(app)
       .get('/health')
